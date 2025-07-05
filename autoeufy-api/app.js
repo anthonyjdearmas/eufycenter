@@ -369,13 +369,37 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
     }
 
     try {
+        // Get selected cameras from request body if provided
+        const { selectedCameras } = req.body || {};
+        
         // First get all devices
         console.log('Getting all devices for mode toggle...');
         const allDevices = await getAllDevices();
         
         // Filter for camera devices (exclude stations)
-        const cameras = allDevices.filter(device => device.type === 'device');
-        console.log(`Found ${cameras.length} camera devices:`, cameras.map(c => `${c.name} (${c.serialNumber})`));
+        let cameras = allDevices.filter(device => device.type === 'device');
+        console.log(`Found ${cameras.length} total camera devices:`, cameras.map(c => `${c.name} (${c.serialNumber})`));
+        
+        // Apply camera selection filter if provided
+        if (selectedCameras && Array.isArray(selectedCameras) && selectedCameras.length > 0) {
+            const originalCameraCount = cameras.length;
+            cameras = cameras.filter(camera => selectedCameras.includes(camera.serialNumber));
+            console.log(`Filtered to ${cameras.length} selected cameras (from ${originalCameraCount} total):`, 
+                       cameras.map(c => `${c.name} (${c.serialNumber})`));
+            
+            if (cameras.length === 0) {
+                return res.status(400).send({ 
+                    error: 'None of the selected cameras were found in the system',
+                    selectedCameras: selectedCameras,
+                    availableCameras: allDevices.filter(device => device.type === 'device').map(c => ({
+                        serialNumber: c.serialNumber,
+                        name: c.name
+                    }))
+                });
+            }
+        } else {
+            console.log('No camera selection specified, processing all cameras');
+        }
         
         if (cameras.length === 0) {
             return res.status(404).send({ error: 'No camera devices found' });

@@ -199,7 +199,8 @@ class CameraModeToggle {
             confirmActions: true,
             defaultMode: 'recording',
             toggleDelay: 2,
-            muteConnectionAlerts: false // New setting for muting connection error sounds
+            muteConnectionAlerts: false, // New setting for muting connection error sounds
+            selectedCameras: [] // Array of camera serial numbers to include in toggle operations
         };
         
         try {
@@ -242,6 +243,18 @@ class CameraModeToggle {
             this.testConnectionError();
         });
         
+        // Add camera selection button listeners
+        document.getElementById('selectAllCameras').addEventListener('click', () => {
+            this.selectAllCameras();
+        });
+        
+        document.getElementById('selectNoneCameras').addEventListener('click', () => {
+            this.selectNoneCameras();
+        });
+        
+        // Load available cameras for selection
+        this.loadCameraSelection();
+        
         // Auto-expand details if setting is enabled
         if (this.settings.autoExpandDetails) {
             setTimeout(() => {
@@ -266,7 +279,8 @@ class CameraModeToggle {
             confirmActions: document.getElementById('confirmActions').checked,
             defaultMode: document.getElementById('defaultMode').value,
             toggleDelay: parseInt(document.getElementById('toggleDelay').value),
-            muteConnectionAlerts: document.getElementById('muteConnectionAlerts').checked
+            muteConnectionAlerts: document.getElementById('muteConnectionAlerts').checked,
+            selectedCameras: this.getSelectedCameras()
         };
         
         // Check if API endpoint changed
@@ -329,6 +343,99 @@ class CameraModeToggle {
             const cameras = this.lastDevicesData.filter(device => device.type === 'device');
             this.updateCameraDetails(cameras);
         }
+    }
+    
+    // Camera selection management functions
+    async loadCameraSelection() {
+        try {
+            const response = await fetch(`${this.apiBase}/api/devices`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            const cameras = data.devices.filter(device => device.type === 'device');
+            
+            this.populateCameraSelection(cameras);
+        } catch (error) {
+            console.error('Failed to load cameras for selection:', error);
+            this.showCameraSelectionError('Failed to load cameras. Please check your connection.');
+        }
+    }
+    
+    populateCameraSelection(cameras) {
+        const container = document.getElementById('cameraSelectionContainer');
+        
+        if (cameras.length === 0) {
+            container.innerHTML = '<div class="col-12 text-center text-muted">No cameras found</div>';
+            return;
+        }
+        
+        // If no cameras were previously selected, default to all cameras
+        if (this.settings.selectedCameras.length === 0) {
+            this.settings.selectedCameras = cameras.map(camera => camera.serialNumber);
+        }
+        
+        container.innerHTML = '';
+        
+        cameras.forEach(camera => {
+            const isSelected = this.settings.selectedCameras.includes(camera.serialNumber);
+            
+            const checkboxCol = document.createElement('div');
+            checkboxCol.className = 'col-md-6 mb-2';
+            
+            checkboxCol.innerHTML = `
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="${camera.serialNumber}" 
+                           id="camera_${camera.serialNumber}" ${isSelected ? 'checked' : ''}>
+                    <label class="form-check-label" for="camera_${camera.serialNumber}">
+                        <strong>${camera.name}</strong>
+                        <br><small class="text-muted">${camera.serialNumber}</small>
+                    </label>
+                </div>
+            `;
+            
+            container.appendChild(checkboxCol);
+        });
+    }
+    
+    showCameraSelectionError(message) {
+        const container = document.getElementById('cameraSelectionContainer');
+        container.innerHTML = `
+            <div class="col-12 text-center text-danger">
+                <i class="bi bi-exclamation-triangle me-2"></i>${message}
+                <br><button type="button" class="btn btn-outline-light btn-sm mt-2" id="retryCameraSelection">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Retry
+                </button>
+            </div>
+        `;
+        
+        // Add event listener for retry button
+        const retryButton = document.getElementById('retryCameraSelection');
+        if (retryButton) {
+            retryButton.addEventListener('click', () => {
+                this.loadCameraSelection();
+            });
+        }
+    }
+    
+    selectAllCameras() {
+        const checkboxes = document.querySelectorAll('#cameraSelectionContainer input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = true;
+        });
+    }
+    
+    selectNoneCameras() {
+        const checkboxes = document.querySelectorAll('#cameraSelectionContainer input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+    }
+    
+    getSelectedCameras() {
+        const checkboxes = document.querySelectorAll('#cameraSelectionContainer input[type="checkbox"]:checked');
+        return Array.from(checkboxes).map(checkbox => checkbox.value);
     }
     
     showNotification(message, type = 'info') {
@@ -398,20 +505,34 @@ class CameraModeToggle {
     updateCameraStatus(devices) {
         // Store devices data for later use
         this.lastDevicesData = devices;
-        const cameras = devices.filter(device => device.type === 'device');
+        let cameras = devices.filter(device => device.type === 'device');
         
         if (cameras.length === 0) {
             this.toggleStatus.textContent = 'No cameras found';
             return;
         }
 
+        // Filter cameras to only include selected ones for toggle state determination
+        let camerasForToggleState = cameras;
+        if (this.settings.selectedCameras && this.settings.selectedCameras.length > 0) {
+            camerasForToggleState = cameras.filter(camera => this.settings.selectedCameras.includes(camera.serialNumber));
+            console.log(`Determining toggle state based on ${camerasForToggleState.length} selected cameras:`, 
+                       camerasForToggleState.map(c => c.name));
+        }
+
+        if (camerasForToggleState.length === 0) {
+            this.toggleStatus.textContent = 'No selected cameras found';
+            return;
+        }
+
         // Analyze current state using both power working mode and motion detection settings
+        // Only consider selected cameras for toggle state determination
         let batteryModeCount = 0;
         let customizedModeCount = 0;
         let allOtherMotionsEnabled = 0;
         let allOtherMotionsDisabled = 0;
 
-        cameras.forEach(camera => {
+        camerasForToggleState.forEach(camera => {
             if (camera.properties && camera.properties.motionDetection === true) {
                 // Count power working modes (0 = Optimal Surveillance/Battery, 2 = Customized Recording)
                 const powerWorkingMode = Number(camera.properties.powerWorkingMode || 0);
@@ -426,13 +547,14 @@ class CameraModeToggle {
         });
 
         // Determine current overall state - prioritize power working mode for accuracy
+        // Base the determination on selected cameras only
         let statusText = '';
         let isInBatteryMode = false;
 
-        if (batteryModeCount >= cameras.length / 2 && allOtherMotionsDisabled >= cameras.length / 2) {
+        if (batteryModeCount >= camerasForToggleState.length / 2 && allOtherMotionsDisabled >= camerasForToggleState.length / 2) {
             statusText = 'Battery Saver Mode';
             isInBatteryMode = true;
-        } else if (customizedModeCount >= cameras.length / 2 && allOtherMotionsEnabled >= cameras.length / 2) {
+        } else if (customizedModeCount >= camerasForToggleState.length / 2 && allOtherMotionsEnabled >= camerasForToggleState.length / 2) {
             statusText = 'Customized Recording Mode';
             isInBatteryMode = false;
         } else {
@@ -440,8 +562,16 @@ class CameraModeToggle {
             isInBatteryMode = false;
         }
 
-        this.toggleStatus.textContent = statusText;
+        // Add camera selection info to status text
+        const selectedCount = this.settings.selectedCameras.length;
+        const totalCameras = cameras.length;
+        const selectionText = selectedCount > 0 && selectedCount < totalCameras 
+            ? ` (${selectedCount}/${totalCameras} selected)`
+            : '';
+
+        this.toggleStatus.textContent = statusText + selectionText;
         this.updateToggleAppearance(isInBatteryMode);
+        // Always show details for all cameras, but toggle state is based on selected cameras only
         this.updateCameraDetails(cameras);
     }
 
@@ -541,9 +671,19 @@ class CameraModeToggle {
             const statusColSize = this.settings.showBatteryLevels ? 'col-6 col-md-2' : 'col-6 col-md-3';
             const enabledColSize = this.settings.showBatteryLevels ? 'col-6 col-md-1' : 'col-6 col-md-2';
 
+            // Check if this camera is selected for toggle operations
+            const isSelected = !this.settings.selectedCameras || 
+                             this.settings.selectedCameras.length === 0 || 
+                             this.settings.selectedCameras.includes(camera.serialNumber);
+            
+            const selectedIndicator = this.settings.selectedCameras && this.settings.selectedCameras.length > 0 
+                ? (isSelected ? '<i class="bi bi-check-circle-fill text-primary me-1" title="Selected for toggle"></i>' 
+                             : '<i class="bi bi-circle text-muted me-1" title="Not selected for toggle"></i>')
+                : '';
+
             row.innerHTML = `
                 <div class="${nameColSize}">
-                    <strong>${camera.name}</strong>
+                    ${selectedIndicator}<strong class="${isSelected ? '' : 'text-muted'}">${camera.name}</strong>
                 </div>
                 <div class="col-6 col-md-2">
                     <span class="badge bg-${powerMode === false ? 'warning' : 'success'} small">
@@ -570,7 +710,12 @@ class CameraModeToggle {
         
         // Show confirmation if enabled
         if (this.settings.confirmActions) {
-            if (!confirm('Are you sure you want to toggle the camera mode for all cameras?')) {
+            const selectedCount = this.settings.selectedCameras.length;
+            const confirmMessage = selectedCount > 0 
+                ? `Are you sure you want to toggle the camera mode for ${selectedCount} selected camera(s)?`
+                : 'Are you sure you want to toggle the camera mode for all cameras?';
+            
+            if (!confirm(confirmMessage)) {
                 return;
             }
         }
@@ -584,11 +729,18 @@ class CameraModeToggle {
         }
         
         try {
+            // Prepare request body with selected cameras
+            const requestBody = {};
+            if (this.settings.selectedCameras && this.settings.selectedCameras.length > 0) {
+                requestBody.selectedCameras = this.settings.selectedCameras;
+            }
+            
             const response = await fetch(`${this.apiBase}/api/cameras/toggle-mode`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
+                body: JSON.stringify(requestBody)
             });
 
             if (!response.ok) {
@@ -603,14 +755,26 @@ class CameraModeToggle {
                 this.playToggleSound();
             }
             
-            // Show initial notification
-            this.showNotification(`Toggle command sent to ${result.summary.totalCameras} cameras. Waiting for completion...`, 'info');
+            // Show initial notification with selection-aware text
+            const selectedCount = this.settings.selectedCameras.length;
+            const totalAvailableCameras = this.lastDevicesData ? 
+                this.lastDevicesData.filter(device => device.type === 'device').length : 
+                result.summary.totalCameras;
             
-            // Now wait for all cameras to reach their target state
+            const isSelectiveMode = selectedCount > 0 && selectedCount < totalAvailableCameras;
+            const cameraText = isSelectiveMode 
+                ? `${result.summary.totalCameras} selected cameras` 
+                : `${result.summary.totalCameras} cameras`;
+            this.showNotification(`Toggle command sent to ${cameraText}. Waiting for completion...`, 'info');
+            
+            // Now wait for all selected cameras to reach their target state
             await this.waitForCameraTransition(result.targetSettings);
             
-            // Show final success notification
-            this.showNotification(`All cameras successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`, 'success');
+            // Show final success notification with selection-aware text
+            const successText = isSelectiveMode
+                ? `Selected cameras successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`
+                : `All cameras successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`;
+            this.showNotification(successText, 'success');
             
         } catch (error) {
             console.error('Toggle failed:', error);
@@ -628,6 +792,7 @@ class CameraModeToggle {
         
         console.log('Waiting for camera transition to complete...');
         console.log('Target settings:', targetSettings);
+        console.log('Selected cameras:', this.settings.selectedCameras);
         
         while (attempts < maxAttempts) {
             attempts++;
@@ -640,9 +805,15 @@ class CameraModeToggle {
                 }
                 
                 const data = await response.json();
-                const cameras = data.devices.filter(device => device.type === 'device');
+                let cameras = data.devices.filter(device => device.type === 'device');
                 
-                // Check if all cameras have reached target state
+                // Filter cameras to only include selected ones if camera selection is enabled
+                if (this.settings.selectedCameras && this.settings.selectedCameras.length > 0) {
+                    cameras = cameras.filter(camera => this.settings.selectedCameras.includes(camera.serialNumber));
+                    console.log(`Monitoring ${cameras.length} selected cameras:`, cameras.map(c => c.name));
+                }
+                
+                // Check if all selected cameras have reached target state
                 let allCamerasReady = true;
                 let transitionedCount = 0;
                 let totalCameras = cameras.length;
@@ -669,17 +840,19 @@ class CameraModeToggle {
                     }
                 }
                 
-                console.log(`Transition progress: ${transitionedCount}/${totalCameras} cameras ready`);
+                console.log(`Transition progress: ${transitionedCount}/${totalCameras} selected cameras ready`);
                 
-                // Update the loading text with progress
-                this.updateLoadingText(`Transitioning cameras... (${transitionedCount}/${totalCameras})`);
+                // Update the loading text with progress for selected cameras
+                const selectedText = this.settings.selectedCameras && this.settings.selectedCameras.length > 0 
+                    ? 'selected ' : '';
+                this.updateLoadingText(`Transitioning ${selectedText}cameras... (${transitionedCount}/${totalCameras})`);
                 
                 // Update camera details with current status
                 this.updateCameraStatus(data.devices);
                 
                 if (allCamerasReady && totalCameras > 0) {
-                    console.log('All cameras have successfully transitioned!');
-                    return; // All cameras are in the target state
+                    console.log('All selected cameras have successfully transitioned!');
+                    return; // All selected cameras are in the target state
                 }
                 
                 // Wait before next poll
@@ -692,9 +865,9 @@ class CameraModeToggle {
             }
         }
         
-        // If we reach here, not all cameras transitioned within the timeout
-        console.warn('Timeout waiting for all cameras to transition');
-        throw new Error('Not all cameras completed transition within expected time');
+        // If we reach here, not all selected cameras transitioned within the timeout
+        console.warn('Timeout waiting for all selected cameras to transition');
+        throw new Error('Not all selected cameras completed transition within expected time');
     }
     
     updateLoadingText(text) {
