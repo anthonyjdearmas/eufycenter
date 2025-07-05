@@ -262,9 +262,9 @@ class CameraModeToggle {
 
         cameras.forEach(camera => {
             if (camera.properties && camera.properties.motionDetection === true) {
-                // Count power working modes (1 = battery, 2 = customized)
-                const powerWorkingMode = Number(camera.properties.powerWorkingMode || 1);
-                if (powerWorkingMode === 1) batteryModeCount++;
+                // Count power working modes (0 = Optimal Surveillance/Battery, 2 = Customized Recording)
+                const powerWorkingMode = Number(camera.properties.powerWorkingMode || 0);
+                if (powerWorkingMode === 0) batteryModeCount++; // Mode 0 is battery saving
                 if (powerWorkingMode === 2) customizedModeCount++;
                 
                 // Count motion detection settings
@@ -279,7 +279,7 @@ class CameraModeToggle {
         let isInBatteryMode = false;
 
         if (batteryModeCount >= cameras.length / 2 && allOtherMotionsDisabled >= cameras.length / 2) {
-            statusText = 'Optimal Battery Mode';
+            statusText = 'Battery Saver Mode';
             isInBatteryMode = true;
         } else if (customizedModeCount >= cameras.length / 2 && allOtherMotionsEnabled >= cameras.length / 2) {
             statusText = 'Customized Recording Mode';
@@ -355,7 +355,7 @@ class CameraModeToggle {
                 // Convert to number to handle both string and numeric values
                 const modeNum = Number(mode);
                 switch(modeNum) {
-                    case 0: return 'Optimal Surveillance';
+                    case 0: return 'Battery Saver Mode';
                     case 1: return 'Optimal Battery';
                     case 2: return 'Customized Recording';
                     default: return mode !== undefined && mode !== null ? `Unknown (${mode})` : 'Unknown';

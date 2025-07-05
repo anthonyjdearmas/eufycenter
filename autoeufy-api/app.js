@@ -3,6 +3,8 @@ import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import WebSocket from 'ws';
+import fs from 'fs';
+import { promisify } from 'util';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -19,29 +21,127 @@ let devicePowerModes = {};
 
 // Initialize default power modes for known devices
 function initializeDevicePowerModes() {
-    // Default to battery mode (1) for all devices initially
+    // Default to Optimal Surveillance mode (0) for all devices initially (this is the battery-saving mode)
     // This will be updated when we actually set or detect the modes
     devicePowerModes = {
-        'T8113N63212153EF': 1, // Backyard
-        'T8113N63212153E0': 1, // Shed  
-        'T8170T102427108A': 1, // Driveway
-        'T8170T1024353ED4': 1, // Driveway Above View
+        'T8113N63212153EF': 0, // Backyard - Optimal Surveillance (battery saving)
+        'T8113N63212153E0': 0, // Shed - Optimal Surveillance (battery saving)
+        'T8170T102427108A': 0, // Driveway - Optimal Surveillance (battery saving)
+        'T8170T1024353ED4': 0, // Driveway Above View - Optimal Surveillance (battery saving)
     };
-    console.log('Initialized device power modes:', devicePowerModes);
+    console.log('Initialized device power modes (0=Surveillance/Battery, 2=Customized Recording):', devicePowerModes);
 }
 
 // Get stored power mode for a device
 function getDevicePowerMode(serialNumber) {
-    const mode = devicePowerModes[serialNumber] || 1; // Default to battery mode
-    console.log(`Getting power mode for ${serialNumber}: ${mode}`);
-    console.log(`Available stored modes:`, Object.keys(devicePowerModes));
-    return mode;
+    return devicePowerModes[serialNumber] || 0; // Default to Optimal Surveillance (battery saving)
 }
 
 // Set power mode for a device
 function setDevicePowerMode(serialNumber, mode) {
     devicePowerModes[serialNumber] = mode;
     console.log(`Updated power mode for ${serialNumber} to ${mode}`);
+}
+
+// CSV Logging Functions
+const csvFilePath = join(__dirname, 'database', 'camera_transitions.csv');
+
+// Get the last transition timestamp from CSV
+function getLastTransitionTimestamp() {
+    try {
+        if (!fs.existsSync(csvFilePath)) {
+            return null;
+        }
+        
+        const csvContent = fs.readFileSync(csvFilePath, 'utf8');
+        const lines = csvContent.trim().split('\n');
+        
+        if (lines.length <= 1) { // Only header or empty
+            return null;
+        }
+        
+        // Get the last line and extract timestamp
+        const lastLine = lines[lines.length - 1];
+        const columns = lastLine.split(',');
+        return columns[0] ? new Date(columns[0]) : null;
+    } catch (error) {
+        console.error('Error reading last transition timestamp:', error);
+        return null;
+    }
+}
+
+// Calculate hours since last transition
+function calculateHoursSinceLastTransition() {
+    const lastTimestamp = getLastTransitionTimestamp();
+    if (!lastTimestamp) {
+        return 'N/A'; // First transition
+    }
+    
+    const now = new Date();
+    const diffMs = now - lastTimestamp;
+    const diffHours = diffMs / (1000 * 60 * 60);
+    return Math.round(diffHours * 100) / 100; // Round to 2 decimal places
+}
+
+// Log transition to CSV
+function logTransition(transitionData) {
+    try {
+        // Ensure CSV file exists with proper header
+        if (!fs.existsSync(csvFilePath)) {
+            const header = 'timestamp,date,time,transition_type,from_mode,to_mode,cameras_affected,hours_since_last_transition,notes\n';
+            fs.writeFileSync(csvFilePath, header);
+        }
+        
+        const now = new Date();
+        const timestamp = now.toISOString();
+        const date = now.toLocaleDateString();
+        const time = now.toLocaleTimeString();
+        const hoursSinceLastTransition = calculateHoursSinceLastTransition();
+        
+        // Escape any commas in the data by wrapping in quotes
+        const escapeCSV = (value) => {
+            if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+                return '"' + value.replace(/"/g, '""') + '"';
+            }
+            return value;
+        };
+        
+        const csvRow = [
+            escapeCSV(timestamp),
+            escapeCSV(date),
+            escapeCSV(time),
+            escapeCSV(transitionData.transitionType),
+            escapeCSV(transitionData.fromMode),
+            escapeCSV(transitionData.toMode),
+            escapeCSV(transitionData.camerasAffected),
+            escapeCSV(hoursSinceLastTransition),
+            escapeCSV(transitionData.notes || '')
+        ].join(',');
+        
+        // Append to CSV file with newline
+        fs.appendFileSync(csvFilePath, csvRow + '\n');
+        
+        console.log(`✅ Logged transition to CSV: ${transitionData.transitionType} (${hoursSinceLastTransition}h since last)`);
+        
+        return {
+            timestamp,
+            date,
+            time,
+            hoursSinceLastTransition
+        };
+    } catch (error) {
+        console.error('❌ Error logging transition to CSV:', error);
+        return null;
+    }
+}
+
+// Get mode name for logging
+function getModeNameForLogging(mode) {
+    switch(Number(mode)) {
+        case 0: return 'Optimal Surveillance (Battery Saving)';
+        case 2: return 'Customized Recording';
+        default: return `Unknown(${mode})`;
+    }
 }
 
 // Initialize device power modes
@@ -230,7 +330,6 @@ app.get('/api/devices', async (req, res) => {
                     });
                     
                     const storedPowerMode = getDevicePowerMode(device.serialNumber);
-                    console.log(`Adding device ${device.name} (${device.serialNumber}) with stored power mode: ${storedPowerMode}`);
                     
                     devicesWithStatus.push({
                         ...device,
@@ -330,14 +429,14 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                     motionDetection: properties.motionDetection
                 });
 
-                // Count states using stored power mode
+                // Count states using stored power mode (0=Surveillance/Battery, 2=Customized Recording)
                 const storedPowerMode = getDevicePowerMode(camera.serialNumber);
                 if (storedPowerMode === 2) customizedRecordingCount++;
-                if (storedPowerMode === 1) batteryModeCount++;
+                if (storedPowerMode === 0) batteryModeCount++; // Mode 0 is Optimal Surveillance (battery saving)
                 if (properties.motionDetectionTypeAllOtherMotions === true) allOtherMotionsEnabledCount++;
                 if (properties.motionDetectionTypeAllOtherMotions === false) allOtherMotionsDisabledCount++;
 
-                console.log(`${camera.name}: Power Mode ${storedPowerMode} (stored), All Other Motions: ${properties.motionDetectionTypeAllOtherMotions}`);
+                console.log(`${camera.name}: Power Mode ${storedPowerMode} (stored: ${storedPowerMode === 0 ? 'Surveillance/Battery' : storedPowerMode === 2 ? 'Customized Recording' : 'Other'}), All Other Motions: ${properties.motionDetectionTypeAllOtherMotions}`);
             } catch (error) {
                 console.error(`Error checking state for ${camera.name}:`, error.message);
                 cameraStates.push({
@@ -352,11 +451,11 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
         
         // If majority are in customized recording (2) with all other motions enabled
         if (customizedRecordingCount >= cameras.length / 2 && allOtherMotionsEnabledCount >= cameras.length / 2) {
-            targetMode = 1; // Switch to optimal battery life
+            targetMode = 0; // Switch to Optimal Surveillance (battery saving)
             targetAllOtherMotions = false; // Disable all other motions
-            actionDescription = 'Switching to Optimal Battery Life mode and disabling all other motions';
+            actionDescription = 'Switching to Optimal Surveillance mode (battery saving) and disabling all other motions';
         }
-        // If majority are in battery mode (1) with all other motions disabled
+        // If majority are in Surveillance/battery mode (0) with all other motions disabled
         else if (batteryModeCount >= cameras.length / 2 && allOtherMotionsDisabledCount >= cameras.length / 2) {
             targetMode = 2; // Switch to customized recording
             targetAllOtherMotions = true; // Enable all other motions
@@ -592,12 +691,34 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
         const successfulCameras = results.filter(r => r.success).length;
         const camerasWithChanges = results.filter(r => r.changesMade).length;
 
+        // Log the transition to CSV if any cameras were changed
+        if (camerasWithChanges > 0) {
+            // Determine the majority "from" mode by looking at successful changes
+            const changedCameras = results.filter(r => r.changesMade && r.success);
+            const fromModes = changedCameras.map(r => r.before.powerWorkingMode.value);
+            const majorityFromMode = fromModes.length > 0 ? fromModes[0] : 'Unknown'; // Take first as they should all be the same in a proper toggle
+            
+            // Create camera names list
+            const cameraNames = changedCameras.map(r => r.name).join('; ');
+            
+            // Log to CSV
+            const logResult = logTransition({
+                transitionType: actionDescription,
+                fromMode: getModeNameForLogging(majorityFromMode),
+                toMode: getModeNameForLogging(targetMode),
+                camerasAffected: `${camerasWithChanges} cameras: ${cameraNames}`,
+                notes: `${successfulCameras}/${cameras.length} cameras successful`
+            });
+            
+            console.log(`Transition logged: ${camerasWithChanges} cameras switched from ${getModeNameForLogging(majorityFromMode)} to ${getModeNameForLogging(targetMode)}`);
+        }
+
         res.send({ 
             action: actionDescription,
             targetSettings: {
                 powerWorkingMode: {
                     value: targetMode,
-                    name: targetMode === 1 ? 'Optimal Battery Life' : 'Customized Recording'
+                    name: targetMode === 0 ? 'Optimal Surveillance (Battery Saving)' : 'Customized Recording'
                 },
                 allOtherMotions: targetAllOtherMotions
             },
@@ -613,6 +734,90 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
     } catch (error) {
         console.error('Error in toggle-mode:', error);
         res.status(500).send({ error: error.message });
+    }
+});
+
+// API endpoint to get transition logs
+app.get('/api/transitions', (req, res) => {
+    try {
+        if (!fs.existsSync(csvFilePath)) {
+            return res.send({ 
+                transitions: [],
+                message: 'No transition logs found'
+            });
+        }
+        
+        const csvContent = fs.readFileSync(csvFilePath, 'utf8');
+        const lines = csvContent.trim().split('\n');
+        
+        if (lines.length <= 1) { // Only header or empty
+            return res.send({ 
+                transitions: [],
+                message: 'No transition data available'
+            });
+        }
+        
+        // Parse CSV data (skip header) with proper CSV parsing
+        const parseCSVLine = (line) => {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                
+                if (char === '"') {
+                    if (inQuotes && line[i + 1] === '"') {
+                        current += '"';
+                        i++; // Skip next quote
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current);
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current);
+            return result;
+        };
+
+        const transitions = lines.slice(1)
+            .filter(line => line.trim().length > 0) // Skip empty lines
+            .map(line => {
+                const columns = parseCSVLine(line);
+                return {
+                    timestamp: columns[0] || '',
+                    date: columns[1] || '',
+                    time: columns[2] || '',
+                    transitionType: columns[3] || '',
+                    fromMode: columns[4] || '',
+                    toMode: columns[5] || '',
+                    camerasAffected: columns[6] || '',
+                    hoursSinceLastTransition: columns[7] || '',
+                    notes: columns[8] || ''
+                };
+            }).reverse(); // Most recent first
+        
+        // Get summary stats
+        const totalTransitions = transitions.length;
+        const lastTransition = transitions[0];
+        const mostRecentHours = lastTransition ? calculateHoursSinceLastTransition() : 'N/A';
+        
+        res.send({
+            transitions: transitions,
+            summary: {
+                totalTransitions,
+                lastTransition: lastTransition?.timestamp || 'Never',
+                hoursSinceLastTransition: mostRecentHours
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error reading transition logs:', error);
+        res.status(500).send({ error: 'Failed to read transition logs' });
     }
 });
 
