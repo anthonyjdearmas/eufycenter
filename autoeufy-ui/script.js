@@ -34,6 +34,7 @@ class CameraModeToggle {
         // Settings-related properties
         this.settings = this.loadSettings();
         this.refreshInterval = null;
+        this.lastDevicesData = null;
         
         this.init();
     }
@@ -144,6 +145,21 @@ class CameraModeToggle {
             this.setupAutoRefresh();
         }
         
+        // Refresh camera details to apply display settings immediately
+        this.refreshCameraDetailsDisplay();
+        
+        // Handle auto-expand details setting
+        const cameraList = document.getElementById('cameraList');
+        if (this.settings.autoExpandDetails) {
+            if (!cameraList.classList.contains('show')) {
+                const collapse = new bootstrap.Collapse(cameraList);
+                collapse.show();
+            }
+        } else {
+            // If auto-expand is disabled and details are currently shown, leave them as-is
+            // (don't auto-collapse, let user control it manually)
+        }
+        
         // Close modal
         const modal = bootstrap.Modal.getInstance(document.getElementById('settingsModal'));
         modal.hide();
@@ -162,6 +178,14 @@ class CameraModeToggle {
         this.refreshInterval = setInterval(() => {
             this.checkConnection();
         }, this.settings.refreshInterval * 1000);
+    }
+    
+    refreshCameraDetailsDisplay() {
+        // Re-render camera details with current settings
+        if (this.lastDevicesData) {
+            const cameras = this.lastDevicesData.filter(device => device.type === 'device');
+            this.updateCameraDetails(cameras);
+        }
     }
     
     showNotification(message, type = 'info') {
@@ -222,6 +246,8 @@ class CameraModeToggle {
 
     updateCameraStatus(devices) {
         console.log('Updating camera status with devices:', devices);
+        // Store devices data for later use
+        this.lastDevicesData = devices;
         const cameras = devices.filter(device => device.type === 'device');
         
         if (cameras.length === 0) {
