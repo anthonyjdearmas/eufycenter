@@ -31,6 +31,10 @@ class CameraModeToggle {
         this.isToggling = false;
         this.currentMode = null;
         
+        // Settings-related properties
+        this.settings = this.loadSettings();
+        this.refreshInterval = null;
+        
         this.init();
     }
 
@@ -38,11 +42,146 @@ class CameraModeToggle {
         // Add event listeners
         this.toggleButton.addEventListener('click', () => this.handleToggle());
         
+        // Initialize settings
+        this.initializeSettings();
+        
         // Check initial status
         this.checkConnection();
         
-        // Auto-refresh status every 30 seconds
-        setInterval(() => this.checkConnection(), 30000);
+        // Set up auto-refresh with current settings
+        this.setupAutoRefresh();
+    }
+    
+    // Settings Management
+    loadSettings() {
+        const defaultSettings = {
+            apiEndpoint: 'http://localhost:8080',
+            refreshInterval: 30,
+            showBatteryLevels: true,
+            autoExpandDetails: false,
+            soundEffects: false,
+            confirmActions: true,
+            defaultMode: 'recording',
+            toggleDelay: 2
+        };
+        
+        try {
+            const saved = localStorage.getItem('eufySettings');
+            return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
+        } catch (error) {
+            console.warn('Failed to load settings:', error);
+            return defaultSettings;
+        }
+    }
+    
+    saveSettings() {
+        try {
+            localStorage.setItem('eufySettings', JSON.stringify(this.settings));
+            console.log('Settings saved successfully');
+        } catch (error) {
+            console.error('Failed to save settings:', error);
+        }
+    }
+    
+    initializeSettings() {
+        // Populate settings modal with current values
+        document.getElementById('apiEndpoint').value = this.settings.apiEndpoint;
+        document.getElementById('refreshInterval').value = this.settings.refreshInterval;
+        document.getElementById('showBatteryLevels').checked = this.settings.showBatteryLevels;
+        document.getElementById('autoExpandDetails').checked = this.settings.autoExpandDetails;
+        document.getElementById('soundEffects').checked = this.settings.soundEffects;
+        document.getElementById('confirmActions').checked = this.settings.confirmActions;
+        document.getElementById('defaultMode').value = this.settings.defaultMode;
+        document.getElementById('toggleDelay').value = this.settings.toggleDelay;
+        
+        // Add save settings event listener
+        document.getElementById('saveSettings').addEventListener('click', () => {
+            this.applySettings();
+        });
+        
+        // Auto-expand details if setting is enabled
+        if (this.settings.autoExpandDetails) {
+            setTimeout(() => {
+                const toggleButton = document.getElementById('toggleCameraList');
+                const collapse = new bootstrap.Collapse(document.getElementById('cameraList'));
+                collapse.show();
+            }, 1000);
+        }
+        
+        // Apply current API endpoint
+        this.apiBase = this.settings.apiEndpoint;
+    }
+    
+    applySettings() {
+        // Get values from modal
+        const newSettings = {
+            apiEndpoint: document.getElementById('apiEndpoint').value,
+            refreshInterval: parseInt(document.getElementById('refreshInterval').value),
+            showBatteryLevels: document.getElementById('showBatteryLevels').checked,
+            autoExpandDetails: document.getElementById('autoExpandDetails').checked,
+            soundEffects: document.getElementById('soundEffects').checked,
+            confirmActions: document.getElementById('confirmActions').checked,
+            defaultMode: document.getElementById('defaultMode').value,
+            toggleDelay: parseInt(document.getElementById('toggleDelay').value)
+        };
+        
+        // Check if API endpoint changed
+        const apiChanged = this.settings.apiEndpoint !== newSettings.apiEndpoint;
+        const intervalChanged = this.settings.refreshInterval !== newSettings.refreshInterval;
+        
+        // Update settings
+        this.settings = newSettings;
+        this.saveSettings();
+        
+        // Apply changes
+        if (apiChanged) {
+            this.apiBase = this.settings.apiEndpoint;
+            // Recheck connection with new endpoint
+            this.checkConnection();
+        }
+        
+        if (intervalChanged) {
+            this.setupAutoRefresh();
+        }
+        
+        // Close modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('settingsModal'));
+        modal.hide();
+        
+        // Show success message
+        this.showNotification('Settings saved successfully!', 'success');
+    }
+    
+    setupAutoRefresh() {
+        // Clear existing interval
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+        }
+        
+        // Set up new interval
+        this.refreshInterval = setInterval(() => {
+            this.checkConnection();
+        }, this.settings.refreshInterval * 1000);
+    }
+    
+    showNotification(message, type = 'info') {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        notification.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 3000);
     }
 
     async checkConnection() {
@@ -168,6 +307,13 @@ class CameraModeToggle {
             const powerMode = camera.properties?.motionDetectionTypeAllOtherMotions;
             const enabled = camera.properties?.enabled;
 
+            // Only show battery level if setting is enabled
+            const batteryCol = this.settings.showBatteryLevels ? `
+                <div class="col-6 col-md-3">
+                    <i class="bi bi-battery"></i> ${batteryLevel}%
+                </div>
+            ` : '';
+
             row.innerHTML = `
                 <div class="col-6 col-md-4">
                     <strong>${camera.name}</strong>
@@ -177,9 +323,7 @@ class CameraModeToggle {
                         ${getPowerModeName(powerMode)}
                     </span>
                 </div>
-                <div class="col-6 col-md-3">
-                    <i class="bi bi-battery"></i> ${batteryLevel}%
-                </div>
+                ${batteryCol}
                 <div class="col-6 col-md-2">
                     <i class="bi bi-${enabled ? 'check-circle text-success' : 'x-circle text-danger'}"></i>
                 </div>
@@ -192,15 +336,27 @@ class CameraModeToggle {
     async handleToggle() {
         if (this.isToggling) return;
         
+        // Show confirmation if enabled
+        if (this.settings.confirmActions) {
+            if (!confirm('Are you sure you want to toggle the camera mode for all cameras?')) {
+                return;
+            }
+        }
+        
         this.isToggling = true;
         this.showLoading(true);
+        
+        // Apply toggle delay if set
+        if (this.settings.toggleDelay > 0) {
+            await new Promise(resolve => setTimeout(resolve, this.settings.toggleDelay * 1000));
+        }
         
         try {
             const response = await fetch(`${this.apiBase}/api/cameras/toggle-mode`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
-                }
+                    'Content-Type': 'application/json',
+                },
             });
 
             if (!response.ok) {
@@ -208,52 +364,61 @@ class CameraModeToggle {
             }
 
             const result = await response.json();
-            console.log('Toggle operation completed:', result);
+            console.log('Toggle result:', result);
             
-            // Refresh camera status after toggle - multiple attempts to ensure update
-            console.log('Toggle completed, refreshing status...');
+            // Play sound effect if enabled
+            if (this.settings.soundEffects) {
+                this.playToggleSound();
+            }
             
-            // Immediate refresh
+            // Show success notification
+            this.showNotification(`Successfully toggled ${result.summary.successfulCameras} cameras`, 'success');
+            
+            // Refresh status after toggle
             setTimeout(() => {
-                console.log('First refresh attempt...');
                 this.checkConnection();
-            }, 500);
-            
-            // Second refresh to ensure we catch any delayed updates
-            setTimeout(() => {
-                console.log('Second refresh attempt...');
-                this.checkConnection();
-            }, 2000);
-            
-            // Third refresh for good measure
-            setTimeout(() => {
-                console.log('Final refresh attempt...');
-                this.checkConnection();
-            }, 4000);
+            }, 1000);
             
         } catch (error) {
             console.error('Toggle failed:', error);
-            // Could add a toast notification here instead of a panel
+            this.showNotification(`Toggle failed: ${error.message}`, 'danger');
         } finally {
             this.isToggling = false;
             this.showLoading(false);
+        }
+    }
+    
+    playToggleSound() {
+        try {
+            // Create a simple beep sound using Web Audio API
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.1);
+        } catch (error) {
+            console.warn('Could not play sound effect:', error);
         }
     }
 
     showLoading(show) {
         if (show) {
             this.loadingOverlay.classList.remove('d-none');
-            this.toggleButton.disabled = true;
         } else {
             this.loadingOverlay.classList.add('d-none');
-            this.toggleButton.disabled = false;
         }
     }
-
-
 }
 
-// Initialize the application when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
+// Initialize the application when the page loads
+document.addEventListener('DOMContentLoaded', function() {
     new CameraModeToggle();
 }); 

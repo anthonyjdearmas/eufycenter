@@ -32,6 +32,38 @@ body {
     align-items: center;
 }
 
+/* Settings Gear Button */
+.settings-gear-btn {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(255, 255, 255, 0.15);
+    border: none;
+    border-radius: 50%;
+    width: 45px;
+    height: 45px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.2rem;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+}
+
+.settings-gear-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+    transform: rotate(45deg) scale(1.1);
+    color: white;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+.settings-gear-btn:active {
+    transform: rotate(45deg) scale(1.05);
+}
+
 /* Main Toggle Button - Optimized for iPad */
 .toggle-container {
     position: relative;
@@ -189,7 +221,91 @@ body {
     font-weight: 500;
 }
 
+/* Settings Modal Styling */
+.modal-content {
+    border: none;
+    border-radius: 15px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
 
+.modal-header {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 15px 15px 0 0;
+}
+
+.modal-title {
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.settings-section {
+    padding: 1rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.settings-section-title {
+    color: #3498db;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(52, 152, 219, 0.3);
+}
+
+.form-control:focus,
+.form-select:focus {
+    background-color: #495057 !important;
+    border-color: #3498db !important;
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25) !important;
+    color: white !important;
+}
+
+.form-check-input:checked {
+    background-color: #3498db;
+    border-color: #3498db;
+}
+
+.form-check-input:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+}
+
+.about-info {
+    background: rgba(0, 0, 0, 0.1);
+    padding: 1rem;
+    border-radius: 8px;
+    border-left: 4px solid #3498db;
+}
+
+.modal-footer {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 0 0 15px 15px;
+}
+
+.btn-primary {
+    background: linear-gradient(145deg, #3498db, #2980b9);
+    border: none;
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(145deg, #2980b9, #21618c);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(52, 152, 219, 0.4);
+}
+
+.btn-secondary {
+    background: rgba(108, 117, 125, 0.8);
+    border: none;
+    transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+    background: rgba(108, 117, 125, 1);
+    transform: translateY(-1px);
+}
 
 /* Camera Details */
 .camera-details {

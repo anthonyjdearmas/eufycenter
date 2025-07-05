@@ -15,11 +15,17 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <!-- Settings Gear Icon (Fixed Position) -->
+    <button id="settingsButton" class="settings-gear-btn" type="button" data-bs-toggle="modal" data-bs-target="#settingsModal">
+        <i class="bi bi-gear-fill"></i>
+    </button>
+
     <div class="container-fluid vh-100 d-flex flex-column justify-content-center align-items-center">
         <div class="text-center">
             <!-- Status Header -->
             <div class="status-header mb-4">
                 <h2 class="text-white mb-3">Eufy Camera System</h2>
+                
                 <div id="connectionStatus" class="connection-status">
                     <i class="bi bi-circle-fill text-secondary"></i>
                     <span class="text-white ms-2">Checking connection...</span>
@@ -67,6 +73,129 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title" id="settingsModalLabel">
+                        <i class="bi bi-gear-fill me-2"></i>Settings
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Connection Settings -->
+                    <div class="settings-section mb-4">
+                        <h6 class="settings-section-title">
+                            <i class="bi bi-wifi me-2"></i>Connection Settings
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label for="apiEndpoint" class="form-label">API Endpoint</label>
+                                <input type="text" class="form-control bg-secondary text-white border-0" id="apiEndpoint" value="http://localhost:8080">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="refreshInterval" class="form-label">Auto-refresh Interval (seconds)</label>
+                                <select class="form-select bg-secondary text-white border-0" id="refreshInterval">
+                                    <option value="15">15 seconds</option>
+                                    <option value="30" selected>30 seconds</option>
+                                    <option value="60">60 seconds</option>
+                                    <option value="120">2 minutes</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Display Settings -->
+                    <div class="settings-section mb-4">
+                        <h6 class="settings-section-title">
+                            <i class="bi bi-display me-2"></i>Display Settings
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="showBatteryLevels" checked>
+                                    <label class="form-check-label" for="showBatteryLevels">
+                                        Show Battery Levels
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="autoExpandDetails">
+                                    <label class="form-check-label" for="autoExpandDetails">
+                                        Auto-expand Camera Details
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="soundEffects">
+                                    <label class="form-check-label" for="soundEffects">
+                                        Sound Effects
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="confirmActions" checked>
+                                    <label class="form-check-label" for="confirmActions">
+                                        Confirm Actions
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Camera Settings -->
+                    <div class="settings-section mb-4">
+                        <h6 class="settings-section-title">
+                            <i class="bi bi-camera-video me-2"></i>Camera Settings
+                        </h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label for="defaultMode" class="form-label">Default Mode for New Cameras</label>
+                                <select class="form-select bg-secondary text-white border-0" id="defaultMode">
+                                    <option value="battery">Battery Life Mode</option>
+                                    <option value="recording" selected>Full Recording Mode</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="toggleDelay" class="form-label">Toggle Delay (seconds)</label>
+                                <select class="form-select bg-secondary text-white border-0" id="toggleDelay">
+                                    <option value="0">No delay</option>
+                                    <option value="1">1 second</option>
+                                    <option value="2" selected>2 seconds</option>
+                                    <option value="3">3 seconds</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- About Section -->
+                    <div class="settings-section">
+                        <h6 class="settings-section-title">
+                            <i class="bi bi-info-circle me-2"></i>About
+                        </h6>
+                        <div class="about-info">
+                            <p class="mb-2"><strong>Eufy Camera Mode Toggle</strong></p>
+                            <p class="text-muted small mb-2">Version 1.0.0</p>
+                            <p class="text-muted small">This application allows you to toggle between battery life and full recording modes for your Eufy security cameras.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveSettings">
+                        <i class="bi bi-check-lg me-1"></i>Save Settings
+                    </button>
                 </div>
             </div>
         </div>
