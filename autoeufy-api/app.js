@@ -14,6 +14,39 @@ let ws = null;
 let isConnected = false;
 let devices = [];
 
+// Store device power modes since the Eufy API no longer provides this info (removed in schema 13+)
+let devicePowerModes = {};
+
+// Initialize default power modes for known devices
+function initializeDevicePowerModes() {
+    // Default to battery mode (1) for all devices initially
+    // This will be updated when we actually set or detect the modes
+    devicePowerModes = {
+        'T8113N63212153EF': 1, // Backyard
+        'T8113N63212153E0': 1, // Shed  
+        'T8170T102427108A': 1, // Driveway
+        'T8170T1024353ED4': 1, // Driveway Above View
+    };
+    console.log('Initialized device power modes:', devicePowerModes);
+}
+
+// Get stored power mode for a device
+function getDevicePowerMode(serialNumber) {
+    const mode = devicePowerModes[serialNumber] || 1; // Default to battery mode
+    console.log(`Getting power mode for ${serialNumber}: ${mode}`);
+    console.log(`Available stored modes:`, Object.keys(devicePowerModes));
+    return mode;
+}
+
+// Set power mode for a device
+function setDevicePowerMode(serialNumber, mode) {
+    devicePowerModes[serialNumber] = mode;
+    console.log(`Updated power mode for ${serialNumber} to ${mode}`);
+}
+
+// Initialize device power modes
+initializeDevicePowerModes();
+
 // Start the Eufy security server
 const eufyServer = spawn('node', [
     'node_modules/eufy-security-ws/dist/bin/server.js',
@@ -196,11 +229,15 @@ app.get('/api/devices', async (req, res) => {
                         }, 5000);
                     });
                     
+                    const storedPowerMode = getDevicePowerMode(device.serialNumber);
+                    console.log(`Adding device ${device.name} (${device.serialNumber}) with stored power mode: ${storedPowerMode}`);
+                    
                     devicesWithStatus.push({
                         ...device,
                         properties: {
                             motionDetection: properties.motionDetection,
                             motionDetectionTypeAllOtherMotions: properties.motionDetectionTypeAllOtherMotions,
+                            powerWorkingMode: storedPowerMode, // Use stored value
                             battery: properties.battery,
                             enabled: properties.enabled
                         }
@@ -288,18 +325,19 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
 
                 cameraStates.push({
                     camera,
-                    powerWorkingMode: properties.powerWorkingMode,
+                    powerWorkingMode: getDevicePowerMode(camera.serialNumber), // Use stored value
                     motionDetectionTypeAllOtherMotions: properties.motionDetectionTypeAllOtherMotions,
                     motionDetection: properties.motionDetection
                 });
 
-                // Count states
-                if (properties.powerWorkingMode === 2) customizedRecordingCount++;
-                if (properties.powerWorkingMode === 1) batteryModeCount++;
+                // Count states using stored power mode
+                const storedPowerMode = getDevicePowerMode(camera.serialNumber);
+                if (storedPowerMode === 2) customizedRecordingCount++;
+                if (storedPowerMode === 1) batteryModeCount++;
                 if (properties.motionDetectionTypeAllOtherMotions === true) allOtherMotionsEnabledCount++;
                 if (properties.motionDetectionTypeAllOtherMotions === false) allOtherMotionsDisabledCount++;
 
-                console.log(`${camera.name}: Power Mode ${properties.powerWorkingMode}, All Other Motions: ${properties.motionDetectionTypeAllOtherMotions}`);
+                console.log(`${camera.name}: Power Mode ${storedPowerMode} (stored), All Other Motions: ${properties.motionDetectionTypeAllOtherMotions}`);
             } catch (error) {
                 console.error(`Error checking state for ${camera.name}:`, error.message);
                 cameraStates.push({
@@ -390,6 +428,8 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                     });
                     changesMade = true;
                     changes.push(`Power mode: ${cameraState.powerWorkingMode} → ${targetMode}`);
+                    // Store the new power mode in our local storage
+                    setDevicePowerMode(camera.serialNumber, targetMode);
                 }
 
                 // Enable motion detection if not already enabled (required for all other motions setting)
@@ -497,7 +537,9 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                     }, 5000);
                 });
 
-                const success = updatedProperties.powerWorkingMode === targetMode && 
+                // Since powerWorkingMode is no longer available from API, check our stored value and motion detection
+                const storedPowerMode = getDevicePowerMode(camera.serialNumber);
+                const success = storedPowerMode === targetMode && 
                                updatedProperties.motionDetectionTypeAllOtherMotions === targetAllOtherMotions;
 
                 // Map power working mode values to readable names
@@ -526,8 +568,8 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                     },
                     after: {
                         powerWorkingMode: {
-                            value: updatedProperties.powerWorkingMode,
-                            name: getPowerModeName(updatedProperties.powerWorkingMode)
+                            value: storedPowerMode,
+                            name: getPowerModeName(storedPowerMode)
                         },
                         motionDetectionTypeAllOtherMotions: updatedProperties.motionDetectionTypeAllOtherMotions,
                         motionDetection: updatedProperties.motionDetection

@@ -245,7 +245,6 @@ class CameraModeToggle {
     }
 
     updateCameraStatus(devices) {
-        console.log('Updating camera status with devices:', devices);
         // Store devices data for later use
         this.lastDevicesData = devices;
         const cameras = devices.filter(device => device.type === 'device');
@@ -255,54 +254,48 @@ class CameraModeToggle {
             return;
         }
 
-        // Analyze current state
+        // Analyze current state using both power working mode and motion detection settings
         let batteryModeCount = 0;
         let customizedModeCount = 0;
         let allOtherMotionsEnabled = 0;
         let allOtherMotionsDisabled = 0;
 
         cameras.forEach(camera => {
-            if (camera.properties) {
-                // Count power modes (1 = battery, 2 = customized)
-                if (camera.properties.motionDetection === true) {
-                    // Only count cameras with motion detection enabled
-                    const powerMode = camera.properties.motionDetectionTypeAllOtherMotions;
-                    console.log(`${camera.name}: All Other Motions = ${powerMode}`);
-                    if (powerMode === true) allOtherMotionsEnabled++;
-                    if (powerMode === false) allOtherMotionsDisabled++;
-                }
+            if (camera.properties && camera.properties.motionDetection === true) {
+                // Count power working modes (1 = battery, 2 = customized)
+                const powerWorkingMode = Number(camera.properties.powerWorkingMode || 1);
+                if (powerWorkingMode === 1) batteryModeCount++;
+                if (powerWorkingMode === 2) customizedModeCount++;
+                
+                // Count motion detection settings
+                const allOtherMotions = camera.properties.motionDetectionTypeAllOtherMotions;
+                if (allOtherMotions === true) allOtherMotionsEnabled++;
+                if (allOtherMotions === false) allOtherMotionsDisabled++;
             }
         });
 
-        console.log(`Status analysis: ${allOtherMotionsEnabled} enabled, ${allOtherMotionsDisabled} disabled out of ${cameras.length} cameras`);
-
-        // Determine current overall state
+        // Determine current overall state - prioritize power working mode for accuracy
         let statusText = '';
         let isInBatteryMode = false;
 
-        if (allOtherMotionsDisabled >= cameras.length / 2) {
-            statusText = 'Battery Life Mode';
+        if (batteryModeCount >= cameras.length / 2 && allOtherMotionsDisabled >= cameras.length / 2) {
+            statusText = 'Optimal Battery Mode';
             isInBatteryMode = true;
-        } else if (allOtherMotionsEnabled >= cameras.length / 2) {
-            statusText = 'Full Recording Mode';
+        } else if (customizedModeCount >= cameras.length / 2 && allOtherMotionsEnabled >= cameras.length / 2) {
+            statusText = 'Customized Recording Mode';
             isInBatteryMode = false;
         } else {
             statusText = 'Mixed Mode';
             isInBatteryMode = false;
         }
 
-        console.log(`Setting status to: ${statusText}, Battery Mode: ${isInBatteryMode}`);
         this.toggleStatus.textContent = statusText;
         this.updateToggleAppearance(isInBatteryMode);
         this.updateCameraDetails(cameras);
     }
 
     updateToggleAppearance(isBatteryMode) {
-        const switchThumb = this.toggleButton.querySelector('.switch-thumb');
         const toggleBtn = this.toggleButton;
-        
-        console.log(`Updating toggle appearance: Battery Mode = ${isBatteryMode}`);
-        console.log(`Before: classes = ${toggleBtn.className}`);
         
         if (isBatteryMode) {
             toggleBtn.classList.remove('active');
@@ -311,13 +304,42 @@ class CameraModeToggle {
             toggleBtn.classList.add('active');
             toggleBtn.classList.remove('battery-mode');
         }
-        
-        console.log(`After: classes = ${toggleBtn.className}`);
     }
 
     updateCameraDetails(cameras) {
         const container = this.cameraDetails;
         container.innerHTML = '';
+
+        // Add header row
+        const headerRow = document.createElement('div');
+        headerRow.className = 'row mb-2 align-items-center border-bottom border-secondary pb-2';
+        
+        const batteryHeaderCol = this.settings.showBatteryLevels ? `
+            <div class="col-6 col-md-2">
+                <small class="text-muted"><strong>Battery</strong></small>
+            </div>
+        ` : '';
+        
+        const nameHeaderColSize = this.settings.showBatteryLevels ? 'col-12 col-md-3' : 'col-6 col-md-4';
+        const enabledHeaderColSize = this.settings.showBatteryLevels ? 'col-6 col-md-1' : 'col-6 col-md-2';
+
+        headerRow.innerHTML = `
+            <div class="${nameHeaderColSize}">
+                <small class="text-muted"><strong>Camera</strong></small>
+            </div>
+            <div class="col-6 col-md-2">
+                <small class="text-muted"><strong>Motion Mode</strong></small>
+            </div>
+            <div class="col-6 col-md-2">
+                <small class="text-muted"><strong>Power Mode</strong></small>
+            </div>
+            ${batteryHeaderCol}
+            <div class="${enabledHeaderColSize}">
+                <small class="text-muted"><strong>Status</strong></small>
+            </div>
+        `;
+        
+        container.appendChild(headerRow);
 
         cameras.forEach(camera => {
             const row = document.createElement('div');
@@ -329,28 +351,61 @@ class CameraModeToggle {
                 return 'Unknown';
             };
 
+            const getPowerWorkingModeName = (mode) => {
+                // Convert to number to handle both string and numeric values
+                const modeNum = Number(mode);
+                switch(modeNum) {
+                    case 0: return 'Optimal Surveillance';
+                    case 1: return 'Optimal Battery';
+                    case 2: return 'Customized Recording';
+                    default: return mode !== undefined && mode !== null ? `Unknown (${mode})` : 'Unknown';
+                }
+            };
+
+            const getPowerWorkingModeClass = (mode) => {
+                // Convert to number to handle both string and numeric values
+                const modeNum = Number(mode);
+                switch(modeNum) {
+                    case 0: return 'bg-info';
+                    case 1: return 'bg-warning';
+                    case 2: return 'bg-success';
+                    default: return 'bg-secondary';
+                }
+            };
+
             const batteryLevel = camera.properties?.battery || 'N/A';
             const powerMode = camera.properties?.motionDetectionTypeAllOtherMotions;
+            const powerWorkingMode = camera.properties?.powerWorkingMode;
             const enabled = camera.properties?.enabled;
 
             // Only show battery level if setting is enabled
             const batteryCol = this.settings.showBatteryLevels ? `
-                <div class="col-6 col-md-3">
+                <div class="col-6 col-md-2">
                     <i class="bi bi-battery"></i> ${batteryLevel}%
                 </div>
             ` : '';
 
+            // Adjust column sizes based on whether battery is shown
+            const nameColSize = this.settings.showBatteryLevels ? 'col-12 col-md-3' : 'col-6 col-md-4';
+            const statusColSize = this.settings.showBatteryLevels ? 'col-6 col-md-2' : 'col-6 col-md-3';
+            const enabledColSize = this.settings.showBatteryLevels ? 'col-6 col-md-1' : 'col-6 col-md-2';
+
             row.innerHTML = `
-                <div class="col-6 col-md-4">
+                <div class="${nameColSize}">
                     <strong>${camera.name}</strong>
                 </div>
-                <div class="col-6 col-md-3">
+                <div class="col-6 col-md-2">
                     <span class="badge bg-${powerMode === false ? 'warning' : 'success'} small">
                         ${getPowerModeName(powerMode)}
                     </span>
                 </div>
-                ${batteryCol}
                 <div class="col-6 col-md-2">
+                    <span class="badge ${getPowerWorkingModeClass(powerWorkingMode)} small">
+                        ${getPowerWorkingModeName(powerWorkingMode)}
+                    </span>
+                </div>
+                ${batteryCol}
+                <div class="${enabledColSize}">
                     <i class="bi bi-${enabled ? 'check-circle text-success' : 'x-circle text-danger'}"></i>
                 </div>
             `;
@@ -397,13 +452,14 @@ class CameraModeToggle {
                 this.playToggleSound();
             }
             
-            // Show success notification
-            this.showNotification(`Successfully toggled ${result.summary.successfulCameras} cameras`, 'success');
+            // Show initial notification
+            this.showNotification(`Toggle command sent to ${result.summary.totalCameras} cameras. Waiting for completion...`, 'info');
             
-            // Refresh status after toggle
-            setTimeout(() => {
-                this.checkConnection();
-            }, 1000);
+            // Now wait for all cameras to reach their target state
+            await this.waitForCameraTransition(result.targetSettings);
+            
+            // Show final success notification
+            this.showNotification(`All cameras successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`, 'success');
             
         } catch (error) {
             console.error('Toggle failed:', error);
@@ -411,6 +467,89 @@ class CameraModeToggle {
         } finally {
             this.isToggling = false;
             this.showLoading(false);
+        }
+    }
+    
+    async waitForCameraTransition(targetSettings) {
+        const maxAttempts = 20; // Maximum number of polling attempts
+        const pollInterval = 2000; // 2 seconds between polls
+        let attempts = 0;
+        
+        console.log('Waiting for camera transition to complete...');
+        console.log('Target settings:', targetSettings);
+        
+        while (attempts < maxAttempts) {
+            attempts++;
+            
+            try {
+                // Poll current device status
+                const response = await fetch(`${this.apiBase}/api/devices`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                const cameras = data.devices.filter(device => device.type === 'device');
+                
+                // Check if all cameras have reached target state
+                let allCamerasReady = true;
+                let transitionedCount = 0;
+                let totalCameras = cameras.length;
+                
+                for (const camera of cameras) {
+                    if (camera.properties && camera.properties.motionDetection === true) {
+                        const currentPowerMode = camera.properties.powerWorkingMode;
+                        const currentAllOtherMotions = camera.properties.motionDetectionTypeAllOtherMotions;
+                        const targetPowerMode = targetSettings.powerWorkingMode?.value;
+                        const targetAllOtherMotions = targetSettings.allOtherMotions;
+                        
+                        // Compare values - power mode from our stored values, motion detection from API
+                        const powerModeMatches = Number(currentPowerMode) === Number(targetPowerMode);
+                        const motionModeMatches = Boolean(currentAllOtherMotions) === Boolean(targetAllOtherMotions);
+                        
+                        if (powerModeMatches && motionModeMatches) {
+                            transitionedCount++;
+                        } else {
+                            allCamerasReady = false;
+                        }
+                    } else {
+                        // Don't count cameras with no properties or motion detection disabled
+                        totalCameras--;
+                    }
+                }
+                
+                console.log(`Transition progress: ${transitionedCount}/${totalCameras} cameras ready`);
+                
+                // Update the loading text with progress
+                this.updateLoadingText(`Transitioning cameras... (${transitionedCount}/${totalCameras})`);
+                
+                // Update camera details with current status
+                this.updateCameraStatus(data.devices);
+                
+                if (allCamerasReady && totalCameras > 0) {
+                    console.log('All cameras have successfully transitioned!');
+                    return; // All cameras are in the target state
+                }
+                
+                // Wait before next poll
+                await new Promise(resolve => setTimeout(resolve, pollInterval));
+                
+            } catch (error) {
+                console.error(`Polling attempt ${attempts} failed:`, error);
+                // Continue trying even if one poll fails
+                await new Promise(resolve => setTimeout(resolve, pollInterval));
+            }
+        }
+        
+        // If we reach here, not all cameras transitioned within the timeout
+        console.warn('Timeout waiting for all cameras to transition');
+        throw new Error('Not all cameras completed transition within expected time');
+    }
+    
+    updateLoadingText(text) {
+        const loadingTextElement = this.loadingOverlay.querySelector('.loading-text');
+        if (loadingTextElement) {
+            loadingTextElement.textContent = text;
         }
     }
     
