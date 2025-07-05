@@ -36,6 +36,12 @@ class CameraModeToggle {
         this.refreshInterval = null;
         this.lastDevicesData = null;
         
+        // Connection error handling
+        this.isConnectionError = false;
+        this.errorFlashInterval = null;
+        this.errorSoundInterval = null;
+        this.audioContext = null;
+        
         this.init();
     }
 
@@ -46,11 +52,140 @@ class CameraModeToggle {
         // Initialize settings
         this.initializeSettings();
         
+        // Initialize audio context for connection error sounds
+        this.initializeAudio();
+        
         // Check initial status
         this.checkConnection();
         
         // Set up auto-refresh with current settings
         this.setupAutoRefresh();
+        
+        // Add cleanup when page unloads
+        window.addEventListener('beforeunload', () => {
+            this.cleanup();
+        });
+    }
+    
+    // Cleanup method
+    cleanup() {
+        this.stopConnectionErrorAlerts();
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+        }
+    }
+    
+    // Test connection error alerts (for testing purposes)
+    testConnectionError() {
+        if (this.isConnectionError) {
+            // If already active, stop the alerts
+            this.stopConnectionErrorAlerts();
+            this.updateConnectionStatus(true); // Simulate connection restored
+            this.showNotification('Connection error test stopped', 'info');
+        } else {
+            // Start the error alerts
+            this.updateConnectionStatus(false, 'Failed to fetch (TEST MODE)');
+            this.showNotification('Testing connection error alerts for 10 seconds...', 'warning');
+            
+            // Auto-stop after 10 seconds
+            setTimeout(() => {
+                if (this.isConnectionError) {
+                    this.stopConnectionErrorAlerts();
+                    this.updateConnectionStatus(true); // Simulate connection restored
+                    this.showNotification('Connection error test completed', 'success');
+                }
+            }, 10000);
+        }
+    }
+    
+    // Initialize audio context for error sounds
+    initializeAudio() {
+        try {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (error) {
+            console.warn('Audio context not supported:', error);
+        }
+    }
+    
+    // Play 3-tone beeping sound for connection errors
+    playConnectionErrorSound() {
+        if (!this.audioContext || this.settings.muteConnectionAlerts) return;
+        
+        // Resume audio context if it's suspended (required by browser policies)
+        if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+        }
+        
+        const tones = [800, 1000, 600]; // 3 different frequencies
+        const toneDuration = 150; // milliseconds
+        const pauseDuration = 100; // milliseconds between tones
+        
+        tones.forEach((frequency, index) => {
+            setTimeout(() => {
+                const oscillator = this.audioContext.createOscillator();
+                const gainNode = this.audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
+                oscillator.type = 'sine';
+                
+                // Set volume envelope
+                gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.1, this.audioContext.currentTime + 0.01);
+                gainNode.gain.linearRampToValueAtTime(0, this.audioContext.currentTime + toneDuration / 1000);
+                
+                oscillator.start(this.audioContext.currentTime);
+                oscillator.stop(this.audioContext.currentTime + toneDuration / 1000);
+            }, index * (toneDuration + pauseDuration));
+        });
+    }
+    
+    // Start connection error alerts
+    startConnectionErrorAlerts() {
+        if (this.isConnectionError) return; // Already active
+        
+        console.log('Starting connection error alerts');
+        this.isConnectionError = true;
+        
+        // Add error class to body for CSS animations
+        document.body.classList.add('connection-error');
+        
+        // Start flashing background
+        this.errorFlashInterval = setInterval(() => {
+            document.body.classList.toggle('error-flash');
+        }, 1000); // Flash every 1 second (slow)
+        
+        // Play initial sound
+        this.playConnectionErrorSound();
+        
+        // Set up recurring sound alerts (every 5 seconds)
+        this.errorSoundInterval = setInterval(() => {
+            this.playConnectionErrorSound();
+        }, 5000);
+    }
+    
+    // Stop connection error alerts
+    stopConnectionErrorAlerts() {
+        if (!this.isConnectionError) return; // Not active
+        
+        console.log('Stopping connection error alerts');
+        this.isConnectionError = false;
+        
+        // Remove error classes
+        document.body.classList.remove('connection-error', 'error-flash');
+        
+        // Clear intervals
+        if (this.errorFlashInterval) {
+            clearInterval(this.errorFlashInterval);
+            this.errorFlashInterval = null;
+        }
+        
+        if (this.errorSoundInterval) {
+            clearInterval(this.errorSoundInterval);
+            this.errorSoundInterval = null;
+        }
     }
     
     // Settings Management
@@ -63,7 +198,8 @@ class CameraModeToggle {
             soundEffects: false,
             confirmActions: true,
             defaultMode: 'recording',
-            toggleDelay: 2
+            toggleDelay: 2,
+            muteConnectionAlerts: false // New setting for muting connection error sounds
         };
         
         try {
@@ -94,10 +230,16 @@ class CameraModeToggle {
         document.getElementById('confirmActions').checked = this.settings.confirmActions;
         document.getElementById('defaultMode').value = this.settings.defaultMode;
         document.getElementById('toggleDelay').value = this.settings.toggleDelay;
+        document.getElementById('muteConnectionAlerts').checked = this.settings.muteConnectionAlerts;
         
         // Add save settings event listener
         document.getElementById('saveSettings').addEventListener('click', () => {
             this.applySettings();
+        });
+        
+        // Add test connection error button listener
+        document.getElementById('testConnectionError').addEventListener('click', () => {
+            this.testConnectionError();
         });
         
         // Auto-expand details if setting is enabled
@@ -123,7 +265,8 @@ class CameraModeToggle {
             soundEffects: document.getElementById('soundEffects').checked,
             confirmActions: document.getElementById('confirmActions').checked,
             defaultMode: document.getElementById('defaultMode').value,
-            toggleDelay: parseInt(document.getElementById('toggleDelay').value)
+            toggleDelay: parseInt(document.getElementById('toggleDelay').value),
+            muteConnectionAlerts: document.getElementById('muteConnectionAlerts').checked
         };
         
         // Check if API endpoint changed
@@ -236,11 +379,19 @@ class CameraModeToggle {
             icon.className = 'bi bi-circle-fill text-success';
             text.textContent = 'Connected to Eufy System';
             this.toggleButton.disabled = false;
+            
+            // Stop connection error alerts if they were active
+            this.stopConnectionErrorAlerts();
         } else {
             icon.className = 'bi bi-circle-fill text-danger';
             text.textContent = error ? `Connection Error: ${error}` : 'Connection Failed';
             this.toggleButton.disabled = true;
             this.toggleStatus.textContent = 'Connection Required';
+            
+            // Start connection error alerts if this is a "Failed to fetch" error
+            if (error && error.toLowerCase().includes('failed to fetch')) {
+                this.startConnectionErrorAlerts();
+            }
         }
     }
 

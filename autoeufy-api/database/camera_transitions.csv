@@ -1,1 +1,3 @@
 timestamp,date,time,transition_type,from_mode,to_mode,cameras_affected,hours_since_last_transition,notes
+2025-07-05T16:40:25.273Z,7/5/2025,12:40:25 PM,Mixed states detected - defaulting to Customized Recording mode with all other motions enabled,Optimal Surveillance (Battery Saving),Customized Recording,4 cameras: Backyard; Shed; Driveway; Driveway Above View,N/A,4/4 cameras successful
+2025-07-05T16:40:32.029Z,7/5/2025,12:40:32 PM,Switching to Optimal Surveillance mode (battery saving) and disabling all other motions,Customized Recording,Optimal Surveillance (Battery Saving),4 cameras: Backyard; Shed; Driveway; Driveway Above View,0,0/4 cameras successful

@@ -5,6 +5,23 @@ body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     min-height: 100vh;
     overflow-x: hidden;
+    transition: background 1s ease-in-out;
+}
+
+/* Connection Error States */
+body.connection-error {
+    background: linear-gradient(135deg, #c0392b 0%, #e74c3c 50%, #c0392b 100%);
+}
+
+body.connection-error.error-flash {
+    background: linear-gradient(135deg, #ecf0f1 0%, #ffffff 50%, #ecf0f1 100%);
+}
+
+/* Animate the flash transition */
+@keyframes connectionErrorFlash {
+    0% { background: linear-gradient(135deg, #c0392b 0%, #e74c3c 50%, #c0392b 100%); }
+    50% { background: linear-gradient(135deg, #ecf0f1 0%, #ffffff 50%, #ecf0f1 100%); }
+    100% { background: linear-gradient(135deg, #c0392b 0%, #e74c3c 50%, #c0392b 100%); }
 }
 
 #mainButton {
