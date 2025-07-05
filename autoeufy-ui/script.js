@@ -597,7 +597,7 @@ class CameraModeToggle {
         
         const batteryHeaderCol = this.settings.showBatteryLevels ? `
             <div class="col-6 col-md-2">
-                <small class="text-muted"><strong>Battery</strong></small>
+                <small class="text-white"><strong>Battery</strong></small>
             </div>
         ` : '';
         
@@ -606,17 +606,17 @@ class CameraModeToggle {
 
         headerRow.innerHTML = `
             <div class="${nameHeaderColSize}">
-                <small class="text-muted"><strong>Camera</strong></small>
+                <small class="text-white"><strong>Camera</strong></small>
             </div>
             <div class="col-6 col-md-2">
-                <small class="text-muted"><strong>Motion Mode</strong></small>
+                <small class="text-white"><strong>Motion Mode</strong></small>
             </div>
             <div class="col-6 col-md-2">
-                <small class="text-muted"><strong>Power Mode</strong></small>
+                <small class="text-white"><strong>Power Mode</strong></small>
             </div>
             ${batteryHeaderCol}
-            <div class="${enabledHeaderColSize}">
-                <small class="text-muted"><strong>Status</strong></small>
+            <div class="${enabledHeaderColSize} pe-0">
+                <small class="text-white"><strong>Status</strong></small>
             </div>
         `;
         
@@ -696,7 +696,7 @@ class CameraModeToggle {
                     </span>
                 </div>
                 ${batteryCol}
-                <div class="${enabledColSize}">
+                <div class="${enabledColSize} pe-0">
                     <i class="bi bi-${enabled ? 'check-circle text-success' : 'x-circle text-danger'}"></i>
                 </div>
             `;
