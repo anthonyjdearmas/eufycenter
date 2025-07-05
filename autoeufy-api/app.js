@@ -693,13 +693,13 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
 
         // Log the transition to CSV if any cameras were changed
         if (camerasWithChanges > 0) {
-            // Determine the majority "from" mode by looking at successful changes
-            const changedCameras = results.filter(r => r.changesMade && r.success);
-            const fromModes = changedCameras.map(r => r.before.powerWorkingMode.value);
-            const majorityFromMode = fromModes.length > 0 ? fromModes[0] : 'Unknown'; // Take first as they should all be the same in a proper toggle
+            // Determine the majority "from" mode by looking at ALL cameras that attempted changes (regardless of success)
+            const camerasWithChangesAttempted = results.filter(r => r.changesMade);
+            const fromModes = camerasWithChangesAttempted.map(r => r.before.powerWorkingMode.value);
+            const majorityFromMode = fromModes.length > 0 ? fromModes[0] : 0; // Default to 0 (Surveillance) if no data
             
-            // Create camera names list
-            const cameraNames = changedCameras.map(r => r.name).join('; ');
+            // Create camera names list from all cameras that had changes attempted
+            const cameraNames = camerasWithChangesAttempted.map(r => r.name).join('; ');
             
             // Log to CSV
             const logResult = logTransition({
