@@ -338,6 +338,7 @@ body.connection-error.error-flash {
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     margin: 0; /* Remove Bootstrap row margins that can cause overflow */
     width: 100%;
+    flex-wrap: wrap; /* Allow rows to wrap if needed */
 }
 
 .camera-details .row:last-child {
@@ -350,6 +351,7 @@ body.connection-error.error-flash {
     word-wrap: break-word; /* Break long words */
     overflow-wrap: break-word; /* Break long words */
     min-width: 0; /* Allow flex items to shrink */
+    flex-shrink: 1; /* Allow columns to shrink */
 }
 
 /* Make camera names shorter on small screens */
@@ -357,6 +359,18 @@ body.connection-error.error-flash {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    max-width: 150px; /* Limit width on mobile */
+}
+
+/* Badge styling for better readability */
+.camera-details .badge {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.4rem;
+    white-space: normal;
+    line-height: 1.1;
+    max-width: 100%;
+    word-wrap: break-word;
+    display: inline-block;
 }
 
 /* Ensure the camera details card doesn't overflow */
@@ -411,6 +425,39 @@ body.connection-error.error-flash {
     .camera-toggle-btn.active .switch-thumb {
         transform: translateX(30px);
     }
+    
+    /* Mobile Camera Details Optimizations */
+    #cameraList .card {
+        width: 95vw;
+        max-width: none;
+    }
+    
+    #cameraList .card-body {
+        padding: 0.75rem;
+    }
+    
+    .camera-details {
+        max-height: 250px;
+        font-size: 0.85rem;
+    }
+    
+    .camera-details .row {
+        padding: 0.5rem 0;
+        font-size: 0.85rem;
+    }
+    
+    .camera-details .row > div {
+        padding: 0 0.2rem;
+    }
+    
+    .camera-details .row > div:first-child {
+        max-width: 150px;
+    }
+    
+    .camera-details .badge {
+        font-size: 0.65rem;
+        padding: 0.2rem 0.3rem;
+    }
 }
 
 /* iPad Specific Optimizations */
@@ -426,6 +473,142 @@ body.connection-error.error-flash {
     
     .toggle-icon {
         font-size: 3rem;
+    }
+    
+    /* Camera Details Panel Optimizations for iPad */
+    #cameraList .card {
+        width: 95vw;
+        max-width: 900px;
+        margin: 0 auto;
+    }
+    
+    #cameraList .card-body {
+        padding: 1.5rem;
+    }
+    
+    .camera-details {
+        max-height: 400px;
+        font-size: 0.95rem;
+    }
+    
+    .camera-details .row {
+        padding: 0.75rem 0;
+        font-size: 0.95rem;
+    }
+    
+    /* Optimize column layouts for iPad */
+    .camera-details .row > div {
+        padding: 0 0.5rem;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        box-sizing: border-box;
+    }
+    
+    /* Ensure camera name column gets priority */
+    .camera-details .row > div:first-child {
+        flex-grow: 1;
+        flex-shrink: 0;
+        overflow: hidden;
+    }
+    
+    /* Make other columns more compact */
+    .camera-details .row > div:not(:first-child) {
+        flex-shrink: 1;
+        justify-content: center;
+        text-align: center;
+        overflow: hidden;
+    }
+    
+    /* Ensure rows don't overflow */
+    .camera-details .row {
+        width: 100%;
+        margin: 0;
+        flex-wrap: nowrap;
+    }
+    
+    /* Camera name column - allow more space */
+    .camera-details .row > div:first-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 280px;
+        min-width: 200px;
+        position: relative;
+        line-height: 1.2;
+    }
+    
+    /* Allow camera names to wrap if they're very long */
+    .camera-details .row > div:first-child strong {
+        display: block;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    /* Show full camera name on hover */
+    .camera-details .row > div:first-child:hover {
+        overflow: visible;
+        white-space: normal;
+        word-wrap: break-word;
+        z-index: 10;
+        background: rgba(0, 0, 0, 0.9);
+        border-radius: 4px;
+        padding: 0.5rem;
+        margin: -0.5rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Override Bootstrap column classes for iPad */
+    .camera-details .col-md-4 {
+        flex: 0 0 35% !important;
+        max-width: 35% !important;
+    }
+    
+    .camera-details .col-md-5 {
+        flex: 0 0 45% !important;
+        max-width: 45% !important;
+    }
+    
+    .camera-details .col-md-3 {
+        flex: 0 0 25% !important;
+        max-width: 25% !important;
+    }
+    
+    .camera-details .col-md-2 {
+        flex: 0 0 15% !important;
+        max-width: 15% !important;
+    }
+    
+    /* Badge optimizations for iPad */
+    .camera-details .badge {
+        font-size: 0.75rem;
+        padding: 0.35rem 0.5rem;
+        white-space: normal;
+        line-height: 1.2;
+        max-width: 100%;
+        word-wrap: break-word;
+    }
+    
+    /* Battery column optimization */
+    .camera-details .row > div:nth-child(4) {
+        min-width: 60px;
+        text-align: center;
+        flex-shrink: 0;
+    }
+    
+    /* Header row optimization */
+    .camera-details .row:first-child {
+        font-size: 0.85rem;
+        font-weight: 600;
+        padding: 0.5rem 0 1rem 0;
+    }
+    
+    .camera-details .row:first-child small {
+        font-size: 0.85rem;
     }
 }
 
@@ -443,6 +626,41 @@ body.connection-error.error-flash {
     .camera-toggle-btn:active {
         transform: scale(0.98);
         transition: transform 0.1s ease;
+    }
+}
+
+/* Large Screen Optimizations */
+@media (min-width: 1025px) {
+    #cameraList .card {
+        width: 80vw;
+        max-width: 1000px;
+    }
+    
+    #cameraList .card-body {
+        padding: 2rem;
+    }
+    
+    .camera-details {
+        max-height: 500px;
+        font-size: 1rem;
+    }
+    
+    .camera-details .row {
+        padding: 1rem 0;
+        font-size: 1rem;
+    }
+    
+    .camera-details .row > div {
+        padding: 0 0.75rem;
+    }
+    
+    .camera-details .row > div:first-child {
+        max-width: 250px;
+    }
+    
+    .camera-details .badge {
+        font-size: 0.8rem;
+        padding: 0.4rem 0.6rem;
     }
 }
 

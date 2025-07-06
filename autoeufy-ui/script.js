@@ -613,23 +613,19 @@ class CameraModeToggle {
             </div>
         ` : '';
         
-        const nameHeaderColSize = this.settings.showBatteryLevels ? 'col-12 col-md-3' : 'col-6 col-md-4';
-        const enabledHeaderColSize = this.settings.showBatteryLevels ? 'col-6 col-md-1' : 'col-6 col-md-2';
+        const nameHeaderColSize = this.settings.showBatteryLevels ? 'col-12 col-md-4' : 'col-6 col-md-5';
 
         headerRow.innerHTML = `
             <div class="${nameHeaderColSize}">
                 <small class="text-white"><strong>Camera</strong></small>
             </div>
-            <div class="col-6 col-md-2">
+            <div class="col-6 col-md-3">
                 <small class="text-white"><strong>Motion Mode</strong></small>
             </div>
-            <div class="col-6 col-md-2">
+            <div class="col-6 col-md-3">
                 <small class="text-white"><strong>Power Mode</strong></small>
             </div>
             ${batteryHeaderCol}
-            <div class="${enabledHeaderColSize} pe-0">
-                <small class="text-white"><strong>Status</strong></small>
-            </div>
         `;
         
         container.appendChild(headerRow);
@@ -679,9 +675,7 @@ class CameraModeToggle {
             ` : '';
 
             // Adjust column sizes based on whether battery is shown
-            const nameColSize = this.settings.showBatteryLevels ? 'col-12 col-md-3' : 'col-6 col-md-4';
-            const statusColSize = this.settings.showBatteryLevels ? 'col-6 col-md-2' : 'col-6 col-md-3';
-            const enabledColSize = this.settings.showBatteryLevels ? 'col-6 col-md-1' : 'col-6 col-md-2';
+            const nameColSize = this.settings.showBatteryLevels ? 'col-12 col-md-4' : 'col-6 col-md-5';
 
             // Check if this camera is selected for toggle operations
             const isSelected = !this.settings.selectedCameras || 
@@ -697,20 +691,17 @@ class CameraModeToggle {
                 <div class="${nameColSize}">
                     ${selectedIndicator}<strong class="${isSelected ? '' : 'text-muted'}">${camera.name}</strong>
                 </div>
-                <div class="col-6 col-md-2">
+                <div class="col-6 col-md-3">
                     <span class="badge bg-${powerMode === false ? 'warning' : 'success'} small">
                         ${getPowerModeName(powerMode)}
                     </span>
                 </div>
-                <div class="col-6 col-md-2">
+                <div class="col-6 col-md-3">
                     <span class="badge ${getPowerWorkingModeClass(powerWorkingMode)} small">
                         ${getPowerWorkingModeName(powerWorkingMode)}
                     </span>
                 </div>
                 ${batteryCol}
-                <div class="${enabledColSize} pe-0">
-                    <i class="bi bi-${enabled ? 'check-circle text-success' : 'x-circle text-danger'}"></i>
-                </div>
             `;
             
             container.appendChild(row);
