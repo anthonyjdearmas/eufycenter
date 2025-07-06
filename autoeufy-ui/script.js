@@ -5,7 +5,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     mainButton.addEventListener('click', function() {
         // Simple click handler - could be expanded later
-        console.log('Button clicked!');
         
         // Optional: Show a simple alert or change button text
         this.textContent = this.textContent === 'Click Me!' ? 'Clicked!' : 'Click Me!';
@@ -33,18 +32,7 @@ class CameraModeToggle {
             this.apiBase = `http://${window.location.hostname}:8080`;
         }
         
-        // Debug logging
-        console.log('UI Debug Info:', {
-            hostname: window.location.hostname,
-            port: window.location.port,
-            fullUrl: window.location.href,
-            isDockerContainer: isDockerContainer,
-            isLocalhost: isLocalhost,
-            apiBase: this.apiBase
-        });
-        
-        // Also display debug info on the page for mobile devices
-        this.displayDebugInfo();
+
         this.toggleButton = document.getElementById('cameraToggle');
         this.toggleStatus = document.getElementById('toggleStatus');
         this.connectionStatus = document.getElementById('connectionStatus');
@@ -126,7 +114,7 @@ class CameraModeToggle {
         try {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         } catch (error) {
-            console.warn('Audio context not supported:', error);
+            // Audio context not supported
         }
     }
     
@@ -169,7 +157,6 @@ class CameraModeToggle {
     startConnectionErrorAlerts() {
         if (this.isConnectionError) return; // Already active
         
-        console.log('Starting connection error alerts');
         this.isConnectionError = true;
         
         // Add error class to body for CSS animations
@@ -193,7 +180,6 @@ class CameraModeToggle {
     stopConnectionErrorAlerts() {
         if (!this.isConnectionError) return; // Not active
         
-        console.log('Stopping connection error alerts');
         this.isConnectionError = false;
         
         // Remove error classes
@@ -241,7 +227,6 @@ class CameraModeToggle {
             const saved = localStorage.getItem('eufySettings');
             return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
         } catch (error) {
-            console.warn('Failed to load settings:', error);
             return defaultSettings;
         }
     }
@@ -249,9 +234,8 @@ class CameraModeToggle {
     saveSettings() {
         try {
             localStorage.setItem('eufySettings', JSON.stringify(this.settings));
-            console.log('Settings saved successfully');
         } catch (error) {
-            console.error('Failed to save settings:', error);
+            // Failed to save settings
         }
     }
     
@@ -392,7 +376,6 @@ class CameraModeToggle {
             
             this.populateCameraSelection(cameras);
         } catch (error) {
-            console.error('Failed to load cameras for selection:', error);
             this.showCameraSelectionError('Failed to load cameras. Please check your connection.');
         }
     }
@@ -493,31 +476,18 @@ class CameraModeToggle {
     }
 
     async checkConnection() {
-        console.log('Checking connection and fetching device status...');
-        console.log('API Base URL:', this.apiBase);
-        console.log('Full API URL:', `${this.apiBase}/api/devices`);
-        
         try {
             const response = await fetch(`${this.apiBase}/api/devices`);
-            console.log('Response status:', response.status);
-            console.log('Response headers:', response.headers);
             
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
             const data = await response.json();
-            console.log('Received device data:', data);
             this.updateConnectionStatus(true);
             this.updateCameraStatus(data.devices);
             
         } catch (error) {
-            console.error('Connection check failed:', error);
-            console.error('Error details:', {
-                message: error.message,
-                type: error.type,
-                apiUrl: `${this.apiBase}/api/devices`
-            });
             this.updateConnectionStatus(false, error.message);
         }
     }
@@ -560,8 +530,6 @@ class CameraModeToggle {
         let camerasForToggleState = cameras;
         if (this.settings.selectedCameras && this.settings.selectedCameras.length > 0) {
             camerasForToggleState = cameras.filter(camera => this.settings.selectedCameras.includes(camera.serialNumber));
-            console.log(`Determining toggle state based on ${camerasForToggleState.length} selected cameras:`, 
-                       camerasForToggleState.map(c => c.name));
         }
 
         if (camerasForToggleState.length === 0) {
@@ -792,7 +760,6 @@ class CameraModeToggle {
             }
 
             const result = await response.json();
-            console.log('Toggle result:', result);
             
             // Play sound effect if enabled
             if (this.settings.soundEffects) {
@@ -821,7 +788,6 @@ class CameraModeToggle {
             this.showNotification(successText, 'success');
             
         } catch (error) {
-            console.error('Toggle failed:', error);
             this.showNotification(`Toggle failed: ${error.message}`, 'danger');
         } finally {
             this.isToggling = false;
@@ -833,10 +799,6 @@ class CameraModeToggle {
         const maxAttempts = 20; // Maximum number of polling attempts
         const pollInterval = 2000; // 2 seconds between polls
         let attempts = 0;
-        
-        console.log('Waiting for camera transition to complete...');
-        console.log('Target settings:', targetSettings);
-        console.log('Selected cameras:', this.settings.selectedCameras);
         
         while (attempts < maxAttempts) {
             attempts++;
@@ -854,7 +816,6 @@ class CameraModeToggle {
                 // Filter cameras to only include selected ones if camera selection is enabled
                 if (this.settings.selectedCameras && this.settings.selectedCameras.length > 0) {
                     cameras = cameras.filter(camera => this.settings.selectedCameras.includes(camera.serialNumber));
-                    console.log(`Monitoring ${cameras.length} selected cameras:`, cameras.map(c => c.name));
                 }
                 
                 // Check if all selected cameras have reached target state
@@ -884,7 +845,7 @@ class CameraModeToggle {
                     }
                 }
                 
-                console.log(`Transition progress: ${transitionedCount}/${totalCameras} selected cameras ready`);
+
                 
                 // Update the loading text with progress for selected cameras
                 const selectedText = this.settings.selectedCameras && this.settings.selectedCameras.length > 0 
@@ -895,7 +856,6 @@ class CameraModeToggle {
                 this.updateCameraStatus(data.devices);
                 
                 if (allCamerasReady && totalCameras > 0) {
-                    console.log('All selected cameras have successfully transitioned!');
                     return; // All selected cameras are in the target state
                 }
                 
@@ -903,14 +863,12 @@ class CameraModeToggle {
                 await new Promise(resolve => setTimeout(resolve, pollInterval));
                 
             } catch (error) {
-                console.error(`Polling attempt ${attempts} failed:`, error);
                 // Continue trying even if one poll fails
                 await new Promise(resolve => setTimeout(resolve, pollInterval));
             }
         }
         
         // If we reach here, not all selected cameras transitioned within the timeout
-        console.warn('Timeout waiting for all selected cameras to transition');
         throw new Error('Not all selected cameras completed transition within expected time');
     }
     
@@ -938,7 +896,7 @@ class CameraModeToggle {
             oscillator.start(audioContext.currentTime);
             oscillator.stop(audioContext.currentTime + 0.1);
         } catch (error) {
-            console.warn('Could not play sound effect:', error);
+            // Could not play sound effect
         }
     }
 
@@ -950,44 +908,7 @@ class CameraModeToggle {
         }
     }
     
-    displayDebugInfo() {
-        const debugInfo = {
-            hostname: window.location.hostname,
-            port: window.location.port,
-            fullUrl: window.location.href,
-            apiBase: this.apiBase,
-            userAgent: navigator.userAgent
-        };
-        
-        // Create debug display if it doesn't exist
-        let debugDiv = document.getElementById('debugInfo');
-        if (!debugDiv) {
-            debugDiv = document.createElement('div');
-            debugDiv.id = 'debugInfo';
-            debugDiv.style.cssText = `
-                position: fixed;
-                top: 10px;
-                right: 10px;
-                background: rgba(0,0,0,0.8);
-                color: white;
-                padding: 10px;
-                border-radius: 5px;
-                font-size: 12px;
-                max-width: 300px;
-                z-index: 1000;
-                font-family: monospace;
-            `;
-            document.body.appendChild(debugDiv);
-        }
-        
-        debugDiv.innerHTML = `
-            <strong>Debug Info:</strong><br>
-            Hostname: ${debugInfo.hostname}<br>
-            Port: ${debugInfo.port}<br>
-            API Base: ${debugInfo.apiBase}<br>
-            User Agent: ${debugInfo.userAgent.substring(0, 50)}...
-        `;
-    }
+
 }
 
 // Initialize the application when the page loads
