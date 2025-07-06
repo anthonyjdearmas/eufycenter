@@ -21,7 +21,30 @@ document.addEventListener('DOMContentLoaded', function() {
 
 class CameraModeToggle {
     constructor() {
-        this.apiBase = 'http://localhost:8080';
+        // Detect if we're running inside Docker or accessed from outside
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const isDockerContainer = window.location.hostname === 'eufy-ui';
+        
+        // Use container name for internal Docker communication, host IP for external access
+        if (isDockerContainer) {
+            this.apiBase = 'http://eufy-api:8080';
+        } else {
+            // For external access, use the same hostname as the UI
+            this.apiBase = `http://${window.location.hostname}:8080`;
+        }
+        
+        // Debug logging
+        console.log('UI Debug Info:', {
+            hostname: window.location.hostname,
+            port: window.location.port,
+            fullUrl: window.location.href,
+            isDockerContainer: isDockerContainer,
+            isLocalhost: isLocalhost,
+            apiBase: this.apiBase
+        });
+        
+        // Also display debug info on the page for mobile devices
+        this.displayDebugInfo();
         this.toggleButton = document.getElementById('cameraToggle');
         this.toggleStatus = document.getElementById('toggleStatus');
         this.connectionStatus = document.getElementById('connectionStatus');
@@ -190,8 +213,19 @@ class CameraModeToggle {
     
     // Settings Management
     loadSettings() {
+        // Detect if we're running inside Docker or accessed from outside
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const isDockerContainer = window.location.hostname === 'eufy-ui';
+        
+        let defaultApiEndpoint;
+        if (isDockerContainer) {
+            defaultApiEndpoint = 'http://eufy-api:8080';
+        } else {
+            defaultApiEndpoint = `http://${window.location.hostname}:8080`;
+        }
+        
         const defaultSettings = {
-            apiEndpoint: 'http://localhost:8080',
+            apiEndpoint: defaultApiEndpoint,
             refreshInterval: 30,
             showBatteryLevels: true,
             autoExpandDetails: false,
@@ -460,8 +494,13 @@ class CameraModeToggle {
 
     async checkConnection() {
         console.log('Checking connection and fetching device status...');
+        console.log('API Base URL:', this.apiBase);
+        console.log('Full API URL:', `${this.apiBase}/api/devices`);
+        
         try {
             const response = await fetch(`${this.apiBase}/api/devices`);
+            console.log('Response status:', response.status);
+            console.log('Response headers:', response.headers);
             
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -474,6 +513,11 @@ class CameraModeToggle {
             
         } catch (error) {
             console.error('Connection check failed:', error);
+            console.error('Error details:', {
+                message: error.message,
+                type: error.type,
+                apiUrl: `${this.apiBase}/api/devices`
+            });
             this.updateConnectionStatus(false, error.message);
         }
     }
@@ -904,6 +948,45 @@ class CameraModeToggle {
         } else {
             this.loadingOverlay.classList.add('d-none');
         }
+    }
+    
+    displayDebugInfo() {
+        const debugInfo = {
+            hostname: window.location.hostname,
+            port: window.location.port,
+            fullUrl: window.location.href,
+            apiBase: this.apiBase,
+            userAgent: navigator.userAgent
+        };
+        
+        // Create debug display if it doesn't exist
+        let debugDiv = document.getElementById('debugInfo');
+        if (!debugDiv) {
+            debugDiv = document.createElement('div');
+            debugDiv.id = 'debugInfo';
+            debugDiv.style.cssText = `
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                background: rgba(0,0,0,0.8);
+                color: white;
+                padding: 10px;
+                border-radius: 5px;
+                font-size: 12px;
+                max-width: 300px;
+                z-index: 1000;
+                font-family: monospace;
+            `;
+            document.body.appendChild(debugDiv);
+        }
+        
+        debugDiv.innerHTML = `
+            <strong>Debug Info:</strong><br>
+            Hostname: ${debugInfo.hostname}<br>
+            Port: ${debugInfo.port}<br>
+            API Base: ${debugInfo.apiBase}<br>
+            User Agent: ${debugInfo.userAgent.substring(0, 50)}...
+        `;
     }
 }
 

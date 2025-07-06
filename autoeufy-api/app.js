@@ -761,6 +761,15 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
     }
 });
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.status(200).send({ 
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        connection: isConnected ? 'connected' : 'disconnected'
+    });
+});
+
 // API endpoint to get transition logs
 app.get('/api/transitions', (req, res) => {
     try {
