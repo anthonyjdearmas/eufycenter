@@ -53,6 +53,10 @@ class CameraModeToggle {
         this.errorSoundInterval = null;
         this.audioContext = null;
         
+        // Motion sensor time tracking
+        this.lastMotionTimes = {};
+        this.timeUpdateInterval = null;
+        
         this.init();
     }
 
@@ -69,8 +73,14 @@ class CameraModeToggle {
         // Check initial status
         this.checkConnection();
         
+        // Load motion sensors
+        this.loadMotionSensors();
+        
         // Set up auto-refresh with current settings
         this.setupAutoRefresh();
+        
+        // Start time update interval (update "X ago" every 30 seconds)
+        this.startTimeUpdateInterval();
         
         // Add cleanup when page unloads
         window.addEventListener('beforeunload', () => {
@@ -83,6 +93,9 @@ class CameraModeToggle {
         this.stopConnectionErrorAlerts();
         if (this.refreshInterval) {
             clearInterval(this.refreshInterval);
+        }
+        if (this.timeUpdateInterval) {
+            clearInterval(this.timeUpdateInterval);
         }
     }
     
@@ -352,13 +365,145 @@ class CameraModeToggle {
         // Set up new interval
         this.refreshInterval = setInterval(() => {
             this.checkConnection();
+            this.loadMotionSensors();
         }, this.settings.refreshInterval * 1000);
+    }
+    
+    async loadMotionSensors() {
+        try {
+            const response = await fetch(`${this.apiBase}/api/motion-sensors`);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            this.updateMotionSensorDisplay(data.motionSensors);
+            
+        } catch (error) {
+            this.updateMotionSensorDisplay(null, error.message);
+        }
+    }
+
+    updateMotionSensorDisplay(sensors, error = null) {
+        const container = document.getElementById('motionSensorList');
+        
+        if (error) {
+            container.innerHTML = `
+                <div class="text-center text-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Failed to load motion sensors
+                    <br><small>${error}</small>
+                </div>
+            `;
+            return;
+        }
+        
+        if (!sensors || sensors.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted">
+                    <i class="bi bi-info-circle me-2"></i>No motion sensors found
+                </div>
+            `;
+            return;
+        }
+
+        const activeSensors = sensors.filter(sensor => 
+            sensor.properties && !sensor.error
+        );
+
+        if (activeSensors.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted">
+                    <i class="bi bi-info-circle me-2"></i>No active motion sensors
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = '';
+        
+        activeSensors.forEach(sensor => {
+            const sensorItem = document.createElement('div');
+            sensorItem.className = 'motion-sensor-item d-flex justify-content-between align-items-center mb-2 p-2 bg-secondary bg-opacity-50 rounded';
+            sensorItem.setAttribute('data-sensor-serial', sensor.serialNumber);
+            
+            const batteryLow = sensor.properties?.batteryLow || false;
+            const batteryIcon = batteryLow ? 'bi-battery-half text-warning' : 'bi-battery-full text-success';
+            const batteryText = batteryLow ? 'Low' : 'OK';
+            
+            const sensorName = sensor.properties?.name || sensor.name;
+            
+            const lastMotionTime = sensor.properties?.motionSensorPirEvent;
+            if (lastMotionTime) {
+                this.lastMotionTimes[sensor.serialNumber] = lastMotionTime;
+            }
+            const lastMotionDisplay = this.formatRelativeTime(lastMotionTime);
+            
+            sensorItem.innerHTML = `
+                <div class="d-flex flex-column">
+                    <div class="d-flex align-items-center mb-1">
+                        <i class="bi bi-broadcast text-success me-2"></i>
+                        <strong>${sensorName}</strong>
+                    </div>
+                    <small class="text-muted ms-4" style="font-size: 0.75rem;" data-last-motion="${sensor.serialNumber}">
+                        <i class="bi bi-clock me-1"></i>Last: ${lastMotionDisplay}
+                    </small>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-success">Active</span>
+                    <span><i class="bi ${batteryIcon} me-1"></i><small>${batteryText}</small></span>
+                </div>
+            `;
+            
+            container.appendChild(sensorItem);
+        });
+    }
+    
+    formatRelativeTime(timestamp) {
+        if (!timestamp) return 'Never';
+        
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        
+        if (diffMins < 1) {
+            return 'Just now';
+        } else if (diffMins < 60) {
+            return `${diffMins}m ago`;
+        } else if (diffHours < 24) {
+            return `${diffHours}h ago`;
+        } else {
+            return `${diffDays}d ago`;
+        }
+    }
+    
+    startTimeUpdateInterval() {
+        this.timeUpdateInterval = setInterval(() => {
+            this.updateAllMotionTimes();
+        }, 30000);
+    }
+    
+    updateAllMotionTimes() {
+        for (const [serialNumber, timestamp] of Object.entries(this.lastMotionTimes)) {
+            this.updateMotionSensorLastTime(serialNumber);
+        }
+    }
+    
+    updateMotionSensorLastTime(serialNumber) {
+        const element = document.querySelector(`[data-last-motion="${serialNumber}"]`);
+        if (element && this.lastMotionTimes[serialNumber]) {
+            const relativeTime = this.formatRelativeTime(this.lastMotionTimes[serialNumber]);
+            element.innerHTML = `<i class="bi bi-clock me-1"></i>Last: ${relativeTime}`;
+        }
     }
     
     refreshCameraDetailsDisplay() {
         // Re-render camera details with current settings
         if (this.lastDevicesData) {
-            const cameras = this.lastDevicesData.filter(device => device.type === 'device');
+            const cameras = this.lastDevicesData.filter(device => device.category === 'camera');
             this.updateCameraDetails(cameras);
         }
     }
@@ -372,7 +517,7 @@ class CameraModeToggle {
             }
             
             const data = await response.json();
-            const cameras = data.devices.filter(device => device.type === 'device');
+            const cameras = data.devices.filter(device => device.category === 'camera');
             
             this.populateCameraSelection(cameras);
         } catch (error) {
@@ -519,7 +664,7 @@ class CameraModeToggle {
     updateCameraStatus(devices) {
         // Store devices data for later use
         this.lastDevicesData = devices;
-        let cameras = devices.filter(device => device.type === 'device');
+        let cameras = devices.filter(device => device.category === 'camera');
         
         if (cameras.length === 0) {
             this.toggleStatus.textContent = 'No cameras found';
@@ -753,20 +898,16 @@ class CameraModeToggle {
             const result = await response.json();
             
             // Play sound effect if enabled
-            if (this.settings.soundEffects) {
-                this.playToggleSound();
+            
+            // Filter cameras to only include selected ones if camera selection is enabled
+            if (this.settings.selectedCameras && this.settings.selectedCameras.length > 0) {
+                cameras = cameras.filter(camera => this.settings.selectedCameras.includes(camera.serialNumber));
             }
             
-            // Show initial notification with selection-aware text
-            const selectedCount = this.settings.selectedCameras.length;
-            const totalAvailableCameras = this.lastDevicesData ? 
-                this.lastDevicesData.filter(device => device.type === 'device').length : 
-                result.summary.totalCameras;
-            
-            const isSelectiveMode = selectedCount > 0 && selectedCount < totalAvailableCameras;
-            const cameraText = isSelectiveMode 
-                ? `${result.summary.totalCameras} selected cameras` 
-                : `${result.summary.totalCameras} cameras`;
+            // Check if all selected cameras have reached target state
+            let allCamerasReady = true;
+            let transitionedCount = 0;
+            let totalCameras = cameras.length;
             this.showNotification(`Toggle command sent to ${cameraText}. Waiting for completion...`, 'info');
             
             // Now wait for all selected cameras to reach their target state
@@ -802,7 +943,7 @@ class CameraModeToggle {
                 }
                 
                 const data = await response.json();
-                let cameras = data.devices.filter(device => device.type === 'device');
+                let cameras = data.devices.filter(device => device.category === 'camera');
                 
                 // Filter cameras to only include selected ones if camera selection is enabled
                 if (this.settings.selectedCameras && this.settings.selectedCameras.length > 0) {

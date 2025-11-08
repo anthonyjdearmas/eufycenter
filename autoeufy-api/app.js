@@ -19,6 +19,12 @@ let devices = [];
 // Store device power modes since the Eufy API no longer provides this info (removed in schema 13+)
 let devicePowerModes = {};
 
+// Store SSE clients for real-time motion updates
+let sseClients = [];
+
+// Store current motion detection states
+let motionStates = {};
+
 // Initialize default power modes for known devices
 function initializeDevicePowerModes() {
     // Default to Optimal Surveillance mode (0) for all devices initially (this is the battery-saving mode)
@@ -176,31 +182,43 @@ function getAllDevices() {
             serialNumber: 'T8113N63212153EF',
             type: 'device',
             name: 'Backyard',
-            deviceType: 8
+            deviceType: 8,
+            category: 'camera'
         },
         {
             serialNumber: 'T8113N63212153E0',
             type: 'device', 
             name: 'Shed',
-            deviceType: 8
+            deviceType: 8,
+            category: 'camera'
         },
         {
             serialNumber: 'T8170T102427108A',
             type: 'device',
             name: 'Driveway',
-            deviceType: 48
+            deviceType: 48,
+            category: 'camera'
         },
         {
             serialNumber: 'T8170T1024353ED4',
             type: 'device',
             name: 'Driveway Above View',
-            deviceType: 48
+            deviceType: 48,
+            category: 'camera'
         },
         {
             serialNumber: 'T8030P1324262B52',
             type: 'station',
             name: 'Base Station',
-            deviceType: 'station'
+            deviceType: 'station',
+            category: 'station'
+        },
+        {
+            serialNumber: 'T8910P0025170762',
+            type: 'device',
+            name: 'Side door Sensor',
+            deviceType: 'T8910',
+            category: 'motion_sensor'
         }
     ];
     
@@ -236,6 +254,38 @@ eufyServer.stdout.on('data', (data) => {
                     console.log('Successfully connected to Eufy service');
                     // After successful connection, refresh devices
                     refreshDevices();
+                }
+            }
+            
+            // Listen for motion detection events
+            if (message.type === 'event' && message.event) {
+                const event = message.event;
+                
+                if (event.source === 'device' && event.event === 'motion detected') {
+                    const timestamp = new Date().toISOString();
+                    const deviceName = event.serialNumber === 'T8910P0025170762' ? 'Side door Sensor' : event.serialNumber;
+                    const motionState = event.state ? 'DETECTED' : 'CLEARED';
+                    
+                    console.log(`🚨 [${timestamp}] MOTION ${motionState} - Device: ${deviceName} (${event.serialNumber})`);
+                    
+                    // Update motion state
+                    motionStates[event.serialNumber] = {
+                        state: event.state,
+                        timestamp: timestamp,
+                        deviceName: deviceName
+                    };
+                    
+                    // Broadcast to all SSE clients
+                    const sseData = JSON.stringify({
+                        serialNumber: event.serialNumber,
+                        deviceName: deviceName,
+                        motionDetected: event.state,
+                        timestamp: timestamp
+                    });
+                    
+                    sseClients.forEach(client => {
+                        client.write(`data: ${sseData}\n\n`);
+                    });
                 }
             }
         });
@@ -852,6 +902,97 @@ app.get('/api/transitions', (req, res) => {
         console.error('Error reading transition logs:', error);
         res.status(500).send({ error: 'Failed to read transition logs' });
     }
+});
+
+app.get('/api/motion-sensors', async (req, res) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return res.status(503).send({ error: 'WebSocket not connected' });
+    }
+    
+    if (!isConnected) {
+        return res.status(503).send({ error: 'Not connected to Eufy service yet. Please wait and try again.' });
+    }
+
+    try {
+        const devices = await getAllDevices();
+        
+        const motionSensors = [];
+        
+        for (const device of devices) {
+            if (device.category === 'motion_sensor') {
+                try {
+                    const properties = await new Promise((resolve, reject) => {
+                        const messageHandler = (data) => {
+                            const message = JSON.parse(data.toString());
+                            if (message.messageId === `get_device_props_${device.serialNumber}_${requestId}`) {
+                                ws.removeListener('message', messageHandler);
+                                if (message.success && (message.properties || (message.result && message.result.properties))) {
+                                    const properties = message.properties || message.result.properties;
+                                    resolve(properties);
+                                } else {
+                                    reject(new Error(`Failed to get properties for ${device.serialNumber}`));
+                                }
+                            }
+                        };
+                        
+                        const requestId = Date.now();
+                        ws.on('message', messageHandler);
+                        
+                        const message = {
+                            messageId: `get_device_props_${device.serialNumber}_${requestId}`,
+                            command: 'device.get_properties',
+                            serialNumber: device.serialNumber
+                        };
+                        ws.send(JSON.stringify(message));
+                        
+                        setTimeout(() => {
+                            ws.removeListener('message', messageHandler);
+                            reject(new Error(`Timeout getting properties for ${device.serialNumber}`));
+                        }, 5000);
+                    });
+                    
+                    const currentMotionState = motionStates[device.serialNumber];
+                    
+                    motionSensors.push({
+                        ...device,
+                        properties: {
+                            name: properties.name,
+                            motionDetected: currentMotionState ? currentMotionState.state : properties.motionDetected,
+                            batteryLow: properties.batteryLow,
+                            motionSensorPirEvent: properties.motionSensorPirEvent,
+                            model: properties.model,
+                            softwareVersion: properties.softwareVersion
+                        },
+                        realtimeMotion: currentMotionState ? currentMotionState.state : false
+                    });
+                } catch (error) {
+                    motionSensors.push({
+                        ...device,
+                        error: error.message
+                    });
+                }
+            }
+        }
+        
+        res.send({ motionSensors });
+    } catch (error) {
+        res.status(500).send({ error: error.message });
+    }
+});
+
+app.get('/api/motion-events', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    res.write('data: {"status":"connected"}\n\n');
+    
+    sseClients.push(res);
+    
+    req.on('close', () => {
+        sseClients = sseClients.filter(client => client !== res);
+    });
 });
 
 // Start the Express server
