@@ -60,29 +60,23 @@ class CameraModeToggle {
         this.init();
     }
 
-    init() {
-        // Add event listeners
+    async init() {
         this.toggleButton.addEventListener('click', () => this.handleToggle());
         
-        // Initialize settings
+        await this.loadSettingsFromServer();
+        
         this.initializeSettings();
         
-        // Initialize audio context for connection error sounds
         this.initializeAudio();
         
-        // Check initial status
         this.checkConnection();
         
-        // Load motion sensors
         this.loadMotionSensors();
         
-        // Set up auto-refresh with current settings
         this.setupAutoRefresh();
         
-        // Start time update interval (update "X ago" every 30 seconds)
         this.startTimeUpdateInterval();
         
-        // Add cleanup when page unloads
         window.addEventListener('beforeunload', () => {
             this.cleanup();
         });
@@ -212,7 +206,6 @@ class CameraModeToggle {
     
     // Settings Management
     loadSettings() {
-        // Detect if we're running inside Docker or accessed from outside
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const isDockerContainer = window.location.hostname === 'eufy-ui';
         
@@ -232,23 +225,67 @@ class CameraModeToggle {
             confirmActions: true,
             defaultMode: 'recording',
             toggleDelay: 2,
-            muteConnectionAlerts: false, // New setting for muting connection error sounds
-            selectedCameras: [] // Array of camera serial numbers to include in toggle operations
+            muteConnectionAlerts: false,
+            selectedCameras: []
         };
         
+        return defaultSettings;
+    }
+    
+    async loadSettingsFromServer() {
         try {
-            const saved = localStorage.getItem('eufySettings');
-            return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
+            const response = await fetch(`${this.apiBase}/api/settings`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.settings && Object.keys(data.settings).length > 0) {
+                if (data.settings.selectedCameras && typeof data.settings.selectedCameras === 'string') {
+                    try {
+                        data.settings.selectedCameras = JSON.parse(data.settings.selectedCameras);
+                    } catch (e) {
+                        data.settings.selectedCameras = [];
+                    }
+                }
+                
+                this.settings = { ...this.settings, ...data.settings };
+                console.log('Loaded settings from server:', this.settings);
+            } else {
+                console.log('No settings found on server, using defaults');
+            }
         } catch (error) {
-            return defaultSettings;
+            console.error('Error loading settings from server:', error);
         }
     }
     
-    saveSettings() {
+    async saveSettings() {
         try {
-            localStorage.setItem('eufySettings', JSON.stringify(this.settings));
+            const settingsToSave = { ...this.settings };
+            
+            if (Array.isArray(settingsToSave.selectedCameras)) {
+                settingsToSave.selectedCameras = JSON.stringify(settingsToSave.selectedCameras);
+            }
+            
+            const response = await fetch(`${this.apiBase}/api/settings`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(settingsToSave)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            console.log('Settings saved to server:', data);
+            return true;
         } catch (error) {
-            // Failed to save settings
+            console.error('Error saving settings to server:', error);
+            return false;
         }
     }
     
@@ -299,8 +336,7 @@ class CameraModeToggle {
         this.apiBase = this.settings.apiEndpoint;
     }
     
-    applySettings() {
-        // Get values from modal
+    async applySettings() {
         const newSettings = {
             apiEndpoint: document.getElementById('apiEndpoint').value,
             refreshInterval: parseInt(document.getElementById('refreshInterval').value),
@@ -314,18 +350,19 @@ class CameraModeToggle {
             selectedCameras: this.getSelectedCameras()
         };
         
-        // Check if API endpoint changed
         const apiChanged = this.settings.apiEndpoint !== newSettings.apiEndpoint;
         const intervalChanged = this.settings.refreshInterval !== newSettings.refreshInterval;
         
-        // Update settings
         this.settings = newSettings;
-        this.saveSettings();
+        const saveSuccess = await this.saveSettings();
         
-        // Apply changes
+        if (!saveSuccess) {
+            this.showNotification('Failed to save settings to server', 'danger');
+            return;
+        }
+        
         if (apiChanged) {
             this.apiBase = this.settings.apiEndpoint;
-            // Recheck connection with new endpoint
             this.checkConnection();
         }
         
@@ -333,26 +370,19 @@ class CameraModeToggle {
             this.setupAutoRefresh();
         }
         
-        // Refresh camera details to apply display settings immediately
         this.refreshCameraDetailsDisplay();
         
-        // Handle auto-expand details setting
         const cameraList = document.getElementById('cameraList');
         if (this.settings.autoExpandDetails) {
             if (!cameraList.classList.contains('show')) {
                 const collapse = new bootstrap.Collapse(cameraList);
                 collapse.show();
             }
-        } else {
-            // If auto-expand is disabled and details are currently shown, leave them as-is
-            // (don't auto-collapse, let user control it manually)
         }
         
-        // Close modal
         const modal = bootstrap.Modal.getInstance(document.getElementById('settingsModal'));
         modal.hide();
         
-        // Show success message
         this.showNotification('Settings saved successfully!', 'success');
     }
     

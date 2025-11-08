@@ -47,10 +47,12 @@ function getDevicePowerMode(serialNumber) {
 function setDevicePowerMode(serialNumber, mode) {
     devicePowerModes[serialNumber] = mode;
     console.log(`Updated power mode for ${serialNumber} to ${mode}`);
+    saveDevicePowerModesToCSV();
 }
 
 // CSV Logging Functions
 const csvFilePath = join(__dirname, 'database', 'camera_transitions.csv');
+const settingsFilePath = join(__dirname, 'database', 'settings.csv');
 
 // Get the last transition timestamp from CSV
 function getLastTransitionTimestamp() {
@@ -150,8 +152,131 @@ function getModeNameForLogging(mode) {
     }
 }
 
+// Settings CSV Management Functions
+function parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        
+        if (char === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+                current += '"';
+                i++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (char === ',' && !inQuotes) {
+            result.push(current);
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    result.push(current);
+    return result;
+}
+
+function loadSettingsFromCSV() {
+    try {
+        if (!fs.existsSync(settingsFilePath)) {
+            console.log('Settings CSV not found, will create on first save');
+            return null;
+        }
+        
+        const csvContent = fs.readFileSync(settingsFilePath, 'utf8');
+        const lines = csvContent.trim().split('\n');
+        
+        if (lines.length < 2) {
+            console.log('Settings CSV is empty');
+            return null;
+        }
+        
+        const headers = parseCSVLine(lines[0]);
+        const values = parseCSVLine(lines[1]);
+        
+        const settings = {};
+        headers.forEach((header, index) => {
+            const value = values[index];
+            if (value !== undefined && value !== '') {
+                if (value === 'true') settings[header] = true;
+                else if (value === 'false') settings[header] = false;
+                else if (!isNaN(value) && value !== '') settings[header] = Number(value);
+                else settings[header] = value;
+            }
+        });
+        
+        console.log('Loaded settings from CSV:', settings);
+        return settings;
+    } catch (error) {
+        console.error('Error loading settings from CSV:', error);
+        return null;
+    }
+}
+
+function saveSettingsToCSV(settings) {
+    try {
+        const databaseDir = join(__dirname, 'database');
+        if (!fs.existsSync(databaseDir)) {
+            fs.mkdirSync(databaseDir, { recursive: true });
+        }
+        
+        const headers = Object.keys(settings).join(',');
+        const values = Object.values(settings).map(v => {
+            if (typeof v === 'string' && (v.includes(',') || v.includes('"') || v.includes('\n'))) {
+                return '"' + v.replace(/"/g, '""') + '"';
+            }
+            return v;
+        }).join(',');
+        
+        const csvContent = `${headers}\n${values}\n`;
+        fs.writeFileSync(settingsFilePath, csvContent);
+        
+        console.log('Saved settings to CSV:', settings);
+        return true;
+    } catch (error) {
+        console.error('Error saving settings to CSV:', error);
+        return false;
+    }
+}
+
+function loadDevicePowerModesFromCSV() {
+    try {
+        const settings = loadSettingsFromCSV();
+        if (!settings) return;
+        
+        Object.keys(settings).forEach(key => {
+            if (key.startsWith('devicePowerMode_')) {
+                const serialNumber = key.replace('devicePowerMode_', '');
+                devicePowerModes[serialNumber] = settings[key];
+            }
+        });
+        
+        console.log('Loaded device power modes from CSV:', devicePowerModes);
+    } catch (error) {
+        console.error('Error loading device power modes from CSV:', error);
+    }
+}
+
+function saveDevicePowerModesToCSV() {
+    try {
+        const settings = loadSettingsFromCSV() || {};
+        
+        Object.keys(devicePowerModes).forEach(serialNumber => {
+            settings[`devicePowerMode_${serialNumber}`] = devicePowerModes[serialNumber];
+        });
+        
+        saveSettingsToCSV(settings);
+    } catch (error) {
+        console.error('Error saving device power modes to CSV:', error);
+    }
+}
+
 // Initialize device power modes
 initializeDevicePowerModes();
+loadDevicePowerModesFromCSV();
 
 // Start the Eufy security server
 const eufyServer = spawn('node', [
@@ -977,6 +1102,72 @@ app.get('/api/motion-sensors', async (req, res) => {
         res.send({ motionSensors });
     } catch (error) {
         res.status(500).send({ error: error.message });
+    }
+});
+
+app.get('/api/settings', (req, res) => {
+    try {
+        const settings = loadSettingsFromCSV();
+        
+        if (!settings) {
+            return res.send({ 
+                settings: {},
+                message: 'No settings found, using defaults'
+            });
+        }
+        
+        const uiSettings = {};
+        Object.keys(settings).forEach(key => {
+            if (!key.startsWith('devicePowerMode_')) {
+                uiSettings[key] = settings[key];
+            }
+        });
+        
+        res.send({ 
+            settings: uiSettings,
+            message: 'Settings loaded successfully'
+        });
+    } catch (error) {
+        console.error('Error reading settings:', error);
+        res.status(500).send({ error: 'Failed to read settings' });
+    }
+});
+
+app.post('/api/settings', (req, res) => {
+    try {
+        const newSettings = req.body;
+        
+        if (!newSettings || typeof newSettings !== 'object') {
+            return res.status(400).send({ error: 'Invalid settings data' });
+        }
+        
+        const existingSettings = loadSettingsFromCSV() || {};
+        
+        const devicePowerModeKeys = {};
+        Object.keys(existingSettings).forEach(key => {
+            if (key.startsWith('devicePowerMode_')) {
+                devicePowerModeKeys[key] = existingSettings[key];
+            }
+        });
+        
+        const mergedSettings = {
+            ...newSettings,
+            ...devicePowerModeKeys
+        };
+        
+        const success = saveSettingsToCSV(mergedSettings);
+        
+        if (success) {
+            res.send({ 
+                success: true,
+                message: 'Settings saved successfully'
+            });
+        } else {
+            res.status(500).send({ error: 'Failed to save settings' });
+        }
+    } catch (error) {
+        console.error('Error saving settings:', error);
+        res.status(500).send({ error: 'Failed to save settings' });
     }
 });
 
