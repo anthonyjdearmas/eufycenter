@@ -2,7 +2,6 @@ import express from 'express';
 import fs from 'fs';
 import { CSV_FILE_PATH } from '../config/constants.js';
 import { loadSettingsFromCSV, saveSettingsToCSV, calculateHoursSinceLastTransition } from '../utils/csvLogger.js';
-import { sseClients, setSseClients, motionTriggeredModeActive, motionTriggeredTimeout, previousCameraModes, MOTION_MODE_DURATION } from '../config/state.js';
 
 const router = express.Router();
 
@@ -153,38 +152,5 @@ router.get('/transitions', (req, res) => {
     }
 });
 
-router.get('/motion-events', (req, res) => {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-
-    res.write('data: {"status":"connected"}\n\n');
-
-    sseClients.push(res);
-
-    req.on('close', () => {
-        setSseClients(sseClients.filter(client => client !== res));
-    });
-});
-
-router.get('/motion-triggered-status', (req, res) => {
-    try {
-        const settings = loadSettingsFromCSV();
-        const timeRemaining = motionTriggeredTimeout ? MOTION_MODE_DURATION : 0;
-
-        res.send({
-            active: motionTriggeredModeActive,
-            enabled: settings?.motionTriggeredAutoSwitch || false,
-            timeRemainingMs: timeRemaining,
-            timeRemainingMinutes: Math.round(timeRemaining / 60000),
-            affectedCameras: Object.keys(previousCameraModes),
-            previousModes: previousCameraModes
-        });
-    } catch (error) {
-        console.error('Error getting motion-triggered status:', error);
-        res.status(500).send({ error: 'Failed to get status' });
-    }
-});
 
 export default router;

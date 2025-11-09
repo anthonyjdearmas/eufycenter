@@ -34,13 +34,6 @@ export function getAllDevices() {
             name: 'Base Station',
             deviceType: 'station',
             category: 'station'
-        },
-        {
-            serialNumber: 'T8910P0025170762',
-            type: 'device',
-            name: 'Side door Sensor',
-            deviceType: 'T8910',
-            category: 'motion_sensor'
         }
     ];
 

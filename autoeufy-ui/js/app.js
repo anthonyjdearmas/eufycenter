@@ -3,7 +3,6 @@ class CameraModeToggle {
         this.apiService = new ApiService();
         this.settingsManager = new SettingsManager(this.apiService);
         this.cameraManager = new CameraManager(this.apiService, this.settingsManager);
-        this.motionSensorManager = new MotionSensorManager(this.apiService);
         this.uiService = new UIService();
         this.audioService = new AudioService();
 
@@ -29,18 +28,7 @@ class CameraModeToggle {
         
         this.checkConnection();
         
-        this.motionSensorManager.loadMotionSensors();
-        
         this.setupAutoRefresh();
-        
-        this.motionSensorManager.startTimeUpdateInterval();
-        
-        this.motionSensorManager.connectToMotionEvents(() => {
-            setTimeout(() => {
-                console.log('Refreshing camera status after motion detection...');
-                this.checkConnection();
-            }, 2000);
-        });
         
         window.addEventListener('beforeunload', () => {
             this.cleanup();
@@ -52,7 +40,6 @@ class CameraModeToggle {
         if (this.refreshInterval) {
             clearInterval(this.refreshInterval);
         }
-        this.motionSensorManager.cleanup();
     }
     
     testConnectionError() {
@@ -156,7 +143,6 @@ class CameraModeToggle {
         const settings = this.settingsManager.getSettings();
         this.refreshInterval = setInterval(() => {
             this.checkConnection();
-            this.motionSensorManager.loadMotionSensors();
         }, settings.refreshInterval * 1000);
     }
 
