@@ -70,14 +70,14 @@ function getLastTransitionTimestamp() {
         if (!fs.existsSync(csvFilePath)) {
             return null;
         }
-        
+
         const csvContent = fs.readFileSync(csvFilePath, 'utf8');
         const lines = csvContent.trim().split('\n');
-        
+
         if (lines.length <= 1) { // Only header or empty
             return null;
         }
-        
+
         // Get the last line and extract timestamp
         const lastLine = lines[lines.length - 1];
         const columns = lastLine.split(',');
@@ -94,7 +94,7 @@ function calculateHoursSinceLastTransition() {
     if (!lastTimestamp) {
         return 'N/A'; // First transition
     }
-    
+
     const now = new Date();
     const diffMs = now - lastTimestamp;
     const diffHours = diffMs / (1000 * 60 * 60);
@@ -109,13 +109,13 @@ function logTransition(transitionData) {
             const header = 'timestamp,date,time,transition_type,from_mode,to_mode,cameras_affected,hours_since_last_transition,notes\n';
             fs.writeFileSync(csvFilePath, header);
         }
-        
+
         const now = new Date();
         const timestamp = now.toISOString();
         const date = now.toLocaleDateString();
         const time = now.toLocaleTimeString();
         const hoursSinceLastTransition = calculateHoursSinceLastTransition();
-        
+
         // Escape any commas in the data by wrapping in quotes
         const escapeCSV = (value) => {
             if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
@@ -123,7 +123,7 @@ function logTransition(transitionData) {
             }
             return value;
         };
-        
+
         const csvRow = [
             escapeCSV(timestamp),
             escapeCSV(date),
@@ -135,12 +135,12 @@ function logTransition(transitionData) {
             escapeCSV(hoursSinceLastTransition),
             escapeCSV(transitionData.notes || '')
         ].join(',');
-        
+
         // Append to CSV file with newline
         fs.appendFileSync(csvFilePath, csvRow + '\n');
-        
+
         console.log(`✅ Logged transition to CSV: ${transitionData.transitionType} (${hoursSinceLastTransition}h since last)`);
-        
+
         return {
             timestamp,
             date,
@@ -155,7 +155,7 @@ function logTransition(transitionData) {
 
 // Get mode name for logging
 function getModeNameForLogging(mode) {
-    switch(Number(mode)) {
+    switch (Number(mode)) {
         case 0: return 'Optimal Surveillance (Battery Saving)';
         case 2: return 'Customized Recording';
         default: return `Unknown(${mode})`;
@@ -167,10 +167,10 @@ function parseCSVLine(line) {
     const result = [];
     let current = '';
     let inQuotes = false;
-    
+
     for (let i = 0; i < line.length; i++) {
         const char = line[i];
-        
+
         if (char === '"') {
             if (inQuotes && line[i + 1] === '"') {
                 current += '"';
@@ -195,18 +195,18 @@ function loadSettingsFromCSV() {
             console.log('Settings CSV not found, will create on first save');
             return null;
         }
-        
+
         const csvContent = fs.readFileSync(settingsFilePath, 'utf8');
         const lines = csvContent.trim().split('\n');
-        
+
         if (lines.length < 2) {
             console.log('Settings CSV is empty');
             return null;
         }
-        
+
         const headers = parseCSVLine(lines[0]);
         const values = parseCSVLine(lines[1]);
-        
+
         const settings = {};
         headers.forEach((header, index) => {
             const value = values[index];
@@ -217,7 +217,7 @@ function loadSettingsFromCSV() {
                 else settings[header] = value;
             }
         });
-        
+
         console.log('Loaded settings from CSV:', settings);
         return settings;
     } catch (error) {
@@ -232,7 +232,7 @@ function saveSettingsToCSV(settings) {
         if (!fs.existsSync(databaseDir)) {
             fs.mkdirSync(databaseDir, { recursive: true });
         }
-        
+
         const headers = Object.keys(settings).join(',');
         const values = Object.values(settings).map(v => {
             if (typeof v === 'string' && (v.includes(',') || v.includes('"') || v.includes('\n'))) {
@@ -240,10 +240,10 @@ function saveSettingsToCSV(settings) {
             }
             return v;
         }).join(',');
-        
+
         const csvContent = `${headers}\n${values}\n`;
         fs.writeFileSync(settingsFilePath, csvContent);
-        
+
         console.log('Saved settings to CSV:', settings);
         return true;
     } catch (error) {
@@ -256,14 +256,14 @@ function loadDevicePowerModesFromCSV() {
     try {
         const settings = loadSettingsFromCSV();
         if (!settings) return;
-        
+
         Object.keys(settings).forEach(key => {
             if (key.startsWith('devicePowerMode_')) {
                 const serialNumber = key.replace('devicePowerMode_', '');
                 devicePowerModes[serialNumber] = settings[key];
             }
         });
-        
+
         console.log('Loaded device power modes from CSV:', devicePowerModes);
     } catch (error) {
         console.error('Error loading device power modes from CSV:', error);
@@ -273,11 +273,11 @@ function loadDevicePowerModesFromCSV() {
 function saveDevicePowerModesToCSV() {
     try {
         const settings = loadSettingsFromCSV() || {};
-        
+
         Object.keys(devicePowerModes).forEach(serialNumber => {
             settings[`devicePowerMode_${serialNumber}`] = devicePowerModes[serialNumber];
         });
-        
+
         saveSettingsToCSV(settings);
     } catch (error) {
         console.error('Error saving device power modes to CSV:', error);
@@ -293,7 +293,7 @@ async function switchCamerasToCustomizedRecording(selectedCameras) {
     try {
         const allDevices = await getAllDevices();
         let cameras = allDevices.filter(device => device.type === 'device' && device.category === 'camera');
-        
+
         if (selectedCameras && Array.isArray(selectedCameras) && selectedCameras.length > 0) {
             cameras = cameras.filter(camera => selectedCameras.includes(camera.serialNumber));
         }
@@ -324,10 +324,10 @@ async function switchCamerasToCustomizedRecording(selectedCameras) {
                                 }
                             }
                         };
-                        
+
                         const requestId = Date.now();
                         ws.on('message', messageHandler);
-                        
+
                         const message = {
                             messageId: `motion_set_power_${camera.serialNumber}_${requestId}`,
                             command: 'device.set_property',
@@ -336,7 +336,7 @@ async function switchCamerasToCustomizedRecording(selectedCameras) {
                             value: 2
                         };
                         ws.send(JSON.stringify(message));
-                        
+
                         setTimeout(() => {
                             ws.removeListener('message', messageHandler);
                             reject(new Error(`Timeout setting power mode for ${camera.serialNumber}`));
@@ -344,7 +344,7 @@ async function switchCamerasToCustomizedRecording(selectedCameras) {
                     });
 
                     setDevicePowerMode(camera.serialNumber, 2);
-                    
+
                     console.log(`   Enabling All Other Motions...`);
                     await new Promise((resolve, reject) => {
                         const messageHandler = (data) => {
@@ -358,10 +358,10 @@ async function switchCamerasToCustomizedRecording(selectedCameras) {
                                 }
                             }
                         };
-                        
+
                         const requestId = Date.now();
                         ws.on('message', messageHandler);
-                        
+
                         const message = {
                             messageId: `motion_set_allmotion_${camera.serialNumber}_${requestId}`,
                             command: 'device.set_property',
@@ -370,13 +370,13 @@ async function switchCamerasToCustomizedRecording(selectedCameras) {
                             value: true
                         };
                         ws.send(JSON.stringify(message));
-                        
+
                         setTimeout(() => {
                             ws.removeListener('message', messageHandler);
                             reject(new Error(`Timeout setting all other motions for ${camera.serialNumber}`));
                         }, 5000);
                     });
-                    
+
                     console.log(`✅ ${camera.name}: Switched to Customized Recording with All Other Motions enabled (was mode ${currentMode})`);
                 } catch (error) {
                     console.error(`❌ Error switching ${camera.name}:`, error.message);
@@ -437,10 +437,10 @@ async function revertCamerasToPreviousModes() {
                                 }
                             }
                         };
-                        
+
                         const requestId = Date.now();
                         ws.on('message', messageHandler);
-                        
+
                         const message = {
                             messageId: `revert_power_${serialNumber}_${requestId}`,
                             command: 'device.set_property',
@@ -449,7 +449,7 @@ async function revertCamerasToPreviousModes() {
                             value: previousMode
                         };
                         ws.send(JSON.stringify(message));
-                        
+
                         setTimeout(() => {
                             ws.removeListener('message', messageHandler);
                             reject(new Error(`Timeout reverting power mode for ${serialNumber}`));
@@ -457,11 +457,11 @@ async function revertCamerasToPreviousModes() {
                     });
 
                     setDevicePowerMode(serialNumber, previousMode);
-                    
+
                     const device = allDevices.find(d => d.serialNumber === serialNumber);
                     const cameraName = device ? device.name : serialNumber;
                     cameraNames.push(cameraName);
-                    
+
                     console.log(`✅ ${cameraName}: Reverted to mode ${previousMode} (was mode ${currentMode})`);
                 } catch (error) {
                     console.error(`❌ Error reverting ${serialNumber}:`, error.message);
@@ -493,7 +493,7 @@ async function handleMotionDetection(serialNumber, state) {
     console.log(`\n=== handleMotionDetection called ===`);
     console.log(`   Sensor: ${serialNumber}`);
     console.log(`   State: ${state}`);
-    
+
     if (!state) {
         console.log(`   ❌ State is false, skipping`);
         return;
@@ -501,16 +501,16 @@ async function handleMotionDetection(serialNumber, state) {
 
     const settings = loadSettingsFromCSV();
     console.log(`   Settings loaded:`, settings);
-    
+
     if (!settings?.motionTriggeredAutoSwitch) {
         console.log(`   ❌ Motion-triggered auto-switch is disabled`);
         return;
     }
-    
+
     console.log(`   ✅ Motion-triggered auto-switch is enabled`);
-    
+
     const selectedCameras = settings?.selectedCameras;
-    
+
     if (!selectedCameras || selectedCameras.length === 0) {
         console.log('   ⚠️  No cameras selected for auto-switching');
         return;
@@ -548,17 +548,17 @@ async function handleMotionDetection(serialNumber, state) {
         await revertCamerasToPreviousModes();
         motionTriggeredTimeout = null;
     }, MOTION_MODE_DURATION);
-    
+
     console.log(`=== handleMotionDetection complete ===\n`);
 }
 
 async function checkMotionSensorTimestamps() {
     if (!ws || !isConnected) return;
-    
+
     try {
         const allDevices = await getAllDevices();
         const motionSensors = allDevices.filter(device => device.category === 'motion_sensor');
-        
+
         for (const sensor of motionSensors) {
             try {
                 const properties = await new Promise((resolve, reject) => {
@@ -574,56 +574,56 @@ async function checkMotionSensorTimestamps() {
                             }
                         }
                     };
-                    
+
                     const requestId = Date.now();
                     ws.on('message', messageHandler);
-                    
+
                     const message = {
                         messageId: `poll_motion_${sensor.serialNumber}_${requestId}`,
                         command: 'device.get_properties',
                         serialNumber: sensor.serialNumber
                     };
                     ws.send(JSON.stringify(message));
-                    
+
                     setTimeout(() => {
                         ws.removeListener('message', messageHandler);
                         reject(new Error(`Timeout getting properties for ${sensor.serialNumber}`));
                     }, 5000);
                 });
-                
+
                 const currentTimestamp = properties.motionSensorPirEvent;
                 const lastTimestamp = lastPirEventTimestamps[sensor.serialNumber];
-                
+
                 if (lastTimestamp && currentTimestamp && currentTimestamp !== lastTimestamp) {
                     const timestamp = new Date().toISOString();
                     const deviceName = properties.name || sensor.name;
-                    
+
                     console.log(`🚨 [${timestamp}] MOTION DETECTED (timestamp change) - Device: ${deviceName} (${sensor.serialNumber})`);
                     console.log(`   Previous: ${new Date(lastTimestamp).toISOString()}`);
                     console.log(`   Current:  ${new Date(currentTimestamp).toISOString()}`);
-                    
+
                     motionStates[sensor.serialNumber] = {
                         state: true,
                         timestamp: timestamp,
                         deviceName: deviceName
                     };
-                    
+
                     const sseData = JSON.stringify({
                         serialNumber: sensor.serialNumber,
                         deviceName: deviceName,
                         motionDetected: true,
                         timestamp: timestamp
                     });
-                    
+
                     sseClients.forEach(client => {
                         client.write(`data: ${sseData}\n\n`);
                     });
-                    
+
                     handleMotionDetection(sensor.serialNumber, true);
                 }
-                
+
                 lastPirEventTimestamps[sensor.serialNumber] = currentTimestamp;
-                
+
             } catch (error) {
                 console.error(`Error checking motion sensor ${sensor.serialNumber}:`, error.message);
             }
@@ -648,7 +648,7 @@ const eufyServer = spawn('node', [
 
 function refreshDevices() {
     if (!ws || !isConnected) return;
-    
+
     const message = {
         messageId: 'poll_refresh_' + Date.now(),
         command: 'driver.poll_refresh'
@@ -659,7 +659,7 @@ function refreshDevices() {
 // Function to get all devices - using known device serial numbers from your system
 function getAllDevices() {
     if (!ws || !isConnected) return Promise.reject(new Error('Not connected'));
-    
+
     // Based on your logs, these are your known devices
     const knownDevices = [
         {
@@ -671,7 +671,7 @@ function getAllDevices() {
         },
         {
             serialNumber: 'T8113N63212153E0',
-            type: 'device', 
+            type: 'device',
             name: 'Shed',
             deviceType: 8,
             category: 'camera'
@@ -705,13 +705,13 @@ function getAllDevices() {
             category: 'motion_sensor'
         }
     ];
-    
+
     return Promise.resolve(knownDevices);
 }
 
 eufyServer.stdout.on('data', (data) => {
     console.log(`Eufy Server: ${data}`);
-    
+
     // Check if server is listening and create WebSocket connection
     if (data.toString().includes('Eufy Security server listening') && !ws) {
         // Create a WebSocket client to connect to the Eufy server
@@ -730,7 +730,7 @@ eufyServer.stdout.on('data', (data) => {
         ws.on('message', (data) => {
             const message = JSON.parse(data.toString());
             console.log('Received message:', message);
-            
+
             // Check if we're connected to Eufy service
             if (message.type === 'result' && message.messageId.startsWith('connect_')) {
                 if (message.success) {
@@ -738,7 +738,7 @@ eufyServer.stdout.on('data', (data) => {
                     console.log('Successfully connected to Eufy service');
                     // After successful connection, refresh devices
                     refreshDevices();
-                    
+
                     // Start polling motion sensor timestamps every 2 seconds
                     if (motionSensorPollingInterval) {
                         clearInterval(motionSensorPollingInterval);
@@ -749,7 +749,7 @@ eufyServer.stdout.on('data', (data) => {
                     console.log('Started motion sensor timestamp polling (2 second interval)');
                 }
             }
-            
+
         });
 
         ws.on('error', (error) => {
@@ -761,7 +761,7 @@ eufyServer.stdout.on('data', (data) => {
             ws = null;
             isConnected = false;
             devices = [];
-            
+
             if (motionSensorPollingInterval) {
                 clearInterval(motionSensorPollingInterval);
                 motionSensorPollingInterval = null;
@@ -780,7 +780,7 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    
+
     // Handle preflight requests
     if (req.method === 'OPTIONS') {
         res.sendStatus(200);
@@ -802,17 +802,17 @@ app.get('/api/devices', async (req, res) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         return res.status(503).send({ error: 'WebSocket not connected' });
     }
-    
+
     if (!isConnected) {
         return res.status(503).send({ error: 'Not connected to Eufy service yet. Please wait and try again.' });
     }
 
     try {
         const devices = await getAllDevices();
-        
+
         // Get properties for each device to provide current status
         const devicesWithStatus = [];
-        
+
         for (const device of devices) {
             if (device.type === 'device') {
                 try {
@@ -830,25 +830,25 @@ app.get('/api/devices', async (req, res) => {
                                 }
                             }
                         };
-                        
+
                         const requestId = Date.now();
                         ws.on('message', messageHandler);
-                        
+
                         const message = {
                             messageId: `get_device_props_${device.serialNumber}_${requestId}`,
                             command: 'device.get_properties',
                             serialNumber: device.serialNumber
                         };
                         ws.send(JSON.stringify(message));
-                        
+
                         setTimeout(() => {
                             ws.removeListener('message', messageHandler);
                             reject(new Error(`Timeout getting properties for ${device.serialNumber}`));
                         }, 5000);
                     });
-                    
+
                     const storedPowerMode = getDevicePowerMode(device.serialNumber);
-                    
+
                     devicesWithStatus.push({
                         ...device,
                         properties: {
@@ -869,7 +869,7 @@ app.get('/api/devices', async (req, res) => {
                 devicesWithStatus.push(device);
             }
         }
-        
+
         res.send({ devices: devicesWithStatus });
     } catch (error) {
         res.status(500).send({ error: error.message });
@@ -881,7 +881,7 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         return res.status(503).send({ error: 'WebSocket not connected' });
     }
-    
+
     if (!isConnected) {
         return res.status(503).send({ error: 'Not connected to Eufy service yet. Please wait and try again.' });
     }
@@ -889,24 +889,24 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
     try {
         // Get selected cameras from request body if provided
         const { selectedCameras } = req.body || {};
-        
+
         // First get all devices
         console.log('Getting all devices for mode toggle...');
         const allDevices = await getAllDevices();
-        
+
         // Filter for camera devices (exclude stations)
         let cameras = allDevices.filter(device => device.type === 'device');
         console.log(`Found ${cameras.length} total camera devices:`, cameras.map(c => `${c.name} (${c.serialNumber})`));
-        
+
         // Apply camera selection filter if provided
         if (selectedCameras && Array.isArray(selectedCameras) && selectedCameras.length > 0) {
             const originalCameraCount = cameras.length;
             cameras = cameras.filter(camera => selectedCameras.includes(camera.serialNumber));
-            console.log(`Filtered to ${cameras.length} selected cameras (from ${originalCameraCount} total):`, 
-                       cameras.map(c => `${c.name} (${c.serialNumber})`));
-            
+            console.log(`Filtered to ${cameras.length} selected cameras (from ${originalCameraCount} total):`,
+                cameras.map(c => `${c.name} (${c.serialNumber})`));
+
             if (cameras.length === 0) {
-                return res.status(400).send({ 
+                return res.status(400).send({
                     error: 'None of the selected cameras were found in the system',
                     selectedCameras: selectedCameras,
                     availableCameras: allDevices.filter(device => device.type === 'device').map(c => ({
@@ -918,7 +918,7 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
         } else {
             console.log('No camera selection specified, processing all cameras');
         }
-        
+
         if (cameras.length === 0) {
             return res.status(404).send({ error: 'No camera devices found' });
         }
@@ -931,7 +931,7 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
         let allOtherMotionsDisabledCount = 0;
 
         const cameraStates = [];
-        
+
         for (const camera of cameras) {
             try {
                 const properties = await new Promise((resolve, reject) => {
@@ -947,17 +947,17 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                             }
                         }
                     };
-                    
+
                     const requestId = Date.now();
                     ws.on('message', messageHandler);
-                    
+
                     const message = {
                         messageId: `check_state_${camera.serialNumber}_${requestId}`,
                         command: 'device.get_properties',
                         serialNumber: camera.serialNumber
                     };
                     ws.send(JSON.stringify(message));
-                    
+
                     setTimeout(() => {
                         ws.removeListener('message', messageHandler);
                         reject(new Error(`Timeout checking state for ${camera.serialNumber}`));
@@ -990,7 +990,7 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
 
         // Determine the target state based on current majority state
         let targetMode, targetAllOtherMotions, actionDescription;
-        
+
         // If majority are in customized recording (2) with all other motions enabled
         if (customizedRecordingCount >= cameraStates.length / 2 && allOtherMotionsEnabledCount >= cameraStates.length / 2) {
             targetMode = 0; // Switch to Optimal Surveillance (battery saving)
@@ -1015,7 +1015,7 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
 
         // Process each camera
         const results = [];
-        
+
         for (const cameraState of cameraStates) {
             if (cameraState.error) {
                 results.push({
@@ -1029,7 +1029,7 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
 
             const camera = cameraState.camera;
             console.log(`Processing camera: ${camera.name} (${camera.serialNumber})`);
-            
+
             try {
                 let changesMade = false;
                 const changes = [];
@@ -1049,10 +1049,10 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                                 }
                             }
                         };
-                        
+
                         const requestId = Date.now();
                         ws.on('message', messageHandler);
-                        
+
                         const message = {
                             messageId: `set_power_mode_${camera.serialNumber}_${requestId}`,
                             command: 'device.set_property',
@@ -1061,7 +1061,7 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                             value: targetMode
                         };
                         ws.send(JSON.stringify(message));
-                        
+
                         setTimeout(() => {
                             ws.removeListener('message', messageHandler);
                             reject(new Error(`Timeout setting power mode for ${camera.serialNumber}`));
@@ -1088,10 +1088,10 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                                 }
                             }
                         };
-                        
+
                         const requestId = Date.now();
                         ws.on('message', messageHandler);
-                        
+
                         const message = {
                             messageId: `set_motion_${camera.serialNumber}_${requestId}`,
                             command: 'device.set_property',
@@ -1100,7 +1100,7 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                             value: true
                         };
                         ws.send(JSON.stringify(message));
-                        
+
                         setTimeout(() => {
                             ws.removeListener('message', messageHandler);
                             reject(new Error(`Timeout setting motion detection for ${camera.serialNumber}`));
@@ -1125,10 +1125,10 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                                 }
                             }
                         };
-                        
+
                         const requestId = Date.now();
                         ws.on('message', messageHandler);
-                        
+
                         const message = {
                             messageId: `set_all_motions_${camera.serialNumber}_${requestId}`,
                             command: 'device.set_property',
@@ -1137,7 +1137,7 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                             value: targetAllOtherMotions
                         };
                         ws.send(JSON.stringify(message));
-                        
+
                         setTimeout(() => {
                             ws.removeListener('message', messageHandler);
                             reject(new Error(`Timeout setting all other motions for ${camera.serialNumber}`));
@@ -1161,17 +1161,17 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                             }
                         }
                     };
-                    
+
                     const requestId = Date.now();
                     ws.on('message', messageHandler);
-                    
+
                     const message = {
                         messageId: `verify_props_${camera.serialNumber}_${requestId}`,
                         command: 'device.get_properties',
                         serialNumber: camera.serialNumber
                     };
                     ws.send(JSON.stringify(message));
-                    
+
                     setTimeout(() => {
                         ws.removeListener('message', messageHandler);
                         reject(new Error(`Timeout verifying properties for ${camera.serialNumber}`));
@@ -1180,12 +1180,12 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
 
                 // Since powerWorkingMode is no longer available from API, check our stored value and motion detection
                 const storedPowerMode = getDevicePowerMode(camera.serialNumber);
-                const success = storedPowerMode === targetMode && 
-                               updatedProperties.motionDetectionTypeAllOtherMotions === targetAllOtherMotions;
+                const success = storedPowerMode === targetMode &&
+                    updatedProperties.motionDetectionTypeAllOtherMotions === targetAllOtherMotions;
 
                 // Map power working mode values to readable names
                 const getPowerModeName = (mode) => {
-                    switch(mode) {
+                    switch (mode) {
                         case 0: return 'Optimal Surveillance';
                         case 1: return 'Optimal Battery Life';
                         case 2: return 'Customized Recording';
@@ -1239,10 +1239,10 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
             const camerasWithChangesAttempted = results.filter(r => r.changesMade);
             const fromModes = camerasWithChangesAttempted.map(r => r.before.powerWorkingMode.value);
             const majorityFromMode = fromModes.length > 0 ? fromModes[0] : 0; // Default to 0 (Surveillance) if no data
-            
+
             // Create camera names list from all cameras that had changes attempted
             const cameraNames = camerasWithChangesAttempted.map(r => r.name).join('; ');
-            
+
             // Log to CSV
             const logResult = logTransition({
                 transitionType: actionDescription,
@@ -1251,11 +1251,11 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                 camerasAffected: `${camerasWithChanges} cameras: ${cameraNames}`,
                 notes: `${successfulCameras}/${cameraStates.length} cameras successful`
             });
-            
+
             console.log(`Transition logged: ${camerasWithChanges} cameras switched from ${getModeNameForLogging(majorityFromMode)} to ${getModeNameForLogging(targetMode)}`);
         }
 
-        res.send({ 
+        res.send({
             action: actionDescription,
             targetSettings: {
                 powerWorkingMode: {
@@ -1281,7 +1281,7 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-    res.status(200).send({ 
+    res.status(200).send({
         status: 'healthy',
         timestamp: new Date().toISOString(),
         connection: isConnected ? 'connected' : 'disconnected'
@@ -1292,31 +1292,31 @@ app.get('/health', (req, res) => {
 app.get('/api/transitions', (req, res) => {
     try {
         if (!fs.existsSync(csvFilePath)) {
-            return res.send({ 
+            return res.send({
                 transitions: [],
                 message: 'No transition logs found'
             });
         }
-        
+
         const csvContent = fs.readFileSync(csvFilePath, 'utf8');
         const lines = csvContent.trim().split('\n');
-        
+
         if (lines.length <= 1) { // Only header or empty
-            return res.send({ 
+            return res.send({
                 transitions: [],
                 message: 'No transition data available'
             });
         }
-        
+
         // Parse CSV data (skip header) with proper CSV parsing
         const parseCSVLine = (line) => {
             const result = [];
             let current = '';
             let inQuotes = false;
-            
+
             for (let i = 0; i < line.length; i++) {
                 const char = line[i];
-                
+
                 if (char === '"') {
                     if (inQuotes && line[i + 1] === '"') {
                         current += '"';
@@ -1351,12 +1351,12 @@ app.get('/api/transitions', (req, res) => {
                     notes: columns[8] || ''
                 };
             }).reverse(); // Most recent first
-        
+
         // Get summary stats
         const totalTransitions = transitions.length;
         const lastTransition = transitions[0];
         const mostRecentHours = lastTransition ? calculateHoursSinceLastTransition() : 'N/A';
-        
+
         res.send({
             transitions: transitions,
             summary: {
@@ -1365,7 +1365,7 @@ app.get('/api/transitions', (req, res) => {
                 hoursSinceLastTransition: mostRecentHours
             }
         });
-        
+
     } catch (error) {
         console.error('Error reading transition logs:', error);
         res.status(500).send({ error: 'Failed to read transition logs' });
@@ -1376,16 +1376,16 @@ app.get('/api/motion-sensors', async (req, res) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         return res.status(503).send({ error: 'WebSocket not connected' });
     }
-    
+
     if (!isConnected) {
         return res.status(503).send({ error: 'Not connected to Eufy service yet. Please wait and try again.' });
     }
 
     try {
         const devices = await getAllDevices();
-        
+
         const motionSensors = [];
-        
+
         for (const device of devices) {
             if (device.category === 'motion_sensor') {
                 try {
@@ -1402,25 +1402,25 @@ app.get('/api/motion-sensors', async (req, res) => {
                                 }
                             }
                         };
-                        
+
                         const requestId = Date.now();
                         ws.on('message', messageHandler);
-                        
+
                         const message = {
                             messageId: `get_device_props_${device.serialNumber}_${requestId}`,
                             command: 'device.get_properties',
                             serialNumber: device.serialNumber
                         };
                         ws.send(JSON.stringify(message));
-                        
+
                         setTimeout(() => {
                             ws.removeListener('message', messageHandler);
                             reject(new Error(`Timeout getting properties for ${device.serialNumber}`));
                         }, 5000);
                     });
-                    
+
                     const currentMotionState = motionStates[device.serialNumber];
-                    
+
                     motionSensors.push({
                         ...device,
                         properties: {
@@ -1441,7 +1441,7 @@ app.get('/api/motion-sensors', async (req, res) => {
                 }
             }
         }
-        
+
         res.send({ motionSensors });
     } catch (error) {
         res.status(500).send({ error: error.message });
@@ -1451,22 +1451,22 @@ app.get('/api/motion-sensors', async (req, res) => {
 app.get('/api/settings', (req, res) => {
     try {
         const settings = loadSettingsFromCSV();
-        
+
         if (!settings) {
-            return res.send({ 
+            return res.send({
                 settings: {},
                 message: 'No settings found, using defaults'
             });
         }
-        
+
         const uiSettings = {};
         Object.keys(settings).forEach(key => {
             if (!key.startsWith('devicePowerMode_')) {
                 uiSettings[key] = settings[key];
             }
         });
-        
-        res.send({ 
+
+        res.send({
             settings: uiSettings,
             message: 'Settings loaded successfully'
         });
@@ -1479,29 +1479,29 @@ app.get('/api/settings', (req, res) => {
 app.post('/api/settings', (req, res) => {
     try {
         const newSettings = req.body;
-        
+
         if (!newSettings || typeof newSettings !== 'object') {
             return res.status(400).send({ error: 'Invalid settings data' });
         }
-        
+
         const existingSettings = loadSettingsFromCSV() || {};
-        
+
         const devicePowerModeKeys = {};
         Object.keys(existingSettings).forEach(key => {
             if (key.startsWith('devicePowerMode_')) {
                 devicePowerModeKeys[key] = existingSettings[key];
             }
         });
-        
+
         const mergedSettings = {
             ...newSettings,
             ...devicePowerModeKeys
         };
-        
+
         const success = saveSettingsToCSV(mergedSettings);
-        
+
         if (success) {
-            res.send({ 
+            res.send({
                 success: true,
                 message: 'Settings saved successfully'
             });
@@ -1519,11 +1519,11 @@ app.get('/api/motion-events', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('Access-Control-Allow-Origin', '*');
-    
+
     res.write('data: {"status":"connected"}\n\n');
-    
+
     sseClients.push(res);
-    
+
     req.on('close', () => {
         sseClients = sseClients.filter(client => client !== res);
     });
@@ -1533,7 +1533,7 @@ app.get('/api/motion-triggered-status', (req, res) => {
     try {
         const settings = loadSettingsFromCSV();
         const timeRemaining = motionTriggeredTimeout ? MOTION_MODE_DURATION : 0;
-        
+
         res.send({
             active: motionTriggeredModeActive,
             enabled: settings?.motionTriggeredAutoSwitch || false,
