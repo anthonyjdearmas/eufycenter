@@ -2,6 +2,7 @@ import express from 'express';
 import fs from 'fs';
 import { CSV_FILE_PATH } from '../config/constants.js';
 import { loadSettingsFromCSV, saveSettingsToCSV, calculateHoursSinceLastTransition } from '../utils/csvLogger.js';
+import { checkSchedulesNow } from '../services/schedulerService.js';
 
 const router = express.Router();
 
@@ -33,7 +34,7 @@ router.get('/settings', (req, res) => {
     }
 });
 
-router.post('/settings', (req, res) => {
+router.post('/settings', async (req, res) => {
     try {
         const newSettings = req.body;
 
@@ -42,6 +43,8 @@ router.post('/settings', (req, res) => {
         }
 
         const existingSettings = loadSettingsFromCSV() || {};
+        const wasOverrideEnabled = existingSettings.overrideSchedule === true;
+        const isOverrideEnabled = newSettings.overrideSchedule === true;
 
         const devicePowerModeKeys = {};
         Object.keys(existingSettings).forEach(key => {
@@ -58,6 +61,11 @@ router.post('/settings', (req, res) => {
         const success = saveSettingsToCSV(mergedSettings);
 
         if (success) {
+            if (wasOverrideEnabled && !isOverrideEnabled) {
+                console.log('Override disabled - checking schedules immediately');
+                checkSchedulesNow();
+            }
+
             res.send({
                 success: true,
                 message: 'Settings saved successfully'

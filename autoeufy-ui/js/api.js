@@ -82,4 +82,12 @@ class ApiService {
     connectToMotionEvents() {
         return new EventSource(`${this.apiBase}/api/motion-events`);
     }
+
+    async getSchedules() {
+        const response = await fetch(`${this.apiBase}/api/schedules`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return await response.json();
+    }
 }

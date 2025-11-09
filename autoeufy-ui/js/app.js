@@ -12,6 +12,8 @@ class CameraModeToggle {
         this.loadingOverlay = document.getElementById('loadingOverlay');
         this.cameraDetails = document.getElementById('cameraDetails');
         this.overrideScheduleButton = document.getElementById('overrideScheduleToggle');
+        this.activeScheduleDisplay = document.getElementById('activeScheduleDisplay');
+        this.scheduleDetails = document.getElementById('scheduleDetails');
         
         this.isToggling = false;
         this.currentMode = null;
@@ -29,6 +31,7 @@ class CameraModeToggle {
         this.initializeSettings();
         
         this.updateOverrideScheduleButtonAppearance();
+        this.updateScheduleDisplay();
         
         this.checkConnection();
         
@@ -157,6 +160,7 @@ class CameraModeToggle {
             const data = await this.apiService.getDevices();
             this.updateConnectionStatus(true);
             this.updateCameraStatus(data.devices);
+            this.updateScheduleDisplay();
             
         } catch (error) {
             this.updateConnectionStatus(false, error.message);
@@ -198,6 +202,7 @@ class CameraModeToggle {
         
         this.updateOverrideScheduleButtonAppearance();
         this.updateToggleButtonState();
+        this.updateScheduleDisplay();
         
         if (settings.overrideSchedule) {
             this.checkConnection();
@@ -211,6 +216,71 @@ class CameraModeToggle {
         } else {
             this.overrideScheduleButton.classList.remove('active');
         }
+    }
+
+    async updateScheduleDisplay() {
+        const settings = this.settingsManager.getSettings();
+        
+        if (settings.overrideSchedule) {
+            this.toggleButton.classList.remove('d-none');
+            this.activeScheduleDisplay.classList.add('d-none');
+            return;
+        }
+
+        this.toggleButton.classList.add('d-none');
+        this.activeScheduleDisplay.classList.remove('d-none');
+
+        try {
+            const response = await this.apiService.getSchedules();
+            const schedules = response.schedules || [];
+            const enabledSchedules = schedules.filter(s => s.enabled);
+            
+            if (enabledSchedules.length === 0) {
+                this.scheduleDetails.textContent = 'No active schedules';
+                return;
+            }
+
+            const now = new Date();
+            const currentDay = this.getDayName(now.getDay());
+            const currentTime = this.formatTime(now.getHours(), now.getMinutes());
+            
+            const activeSchedules = enabledSchedules.filter(schedule => {
+                return schedule.days.some(day => day.toLowerCase() === currentDay.toLowerCase());
+            });
+
+            if (activeSchedules.length === 0) {
+                this.scheduleDetails.textContent = 'No schedules for today';
+            } else if (activeSchedules.length === 1) {
+                const schedule = activeSchedules[0];
+                const timeRangesText = schedule.timeRanges
+                    .map(r => `${this.convertTo12Hour(r.start)}-${this.convertTo12Hour(r.end)}`)
+                    .join(', ');
+                const modeName = schedule.mode === 0 ? 'Battery Saving' : 'Customized Recording';
+                this.scheduleDetails.innerHTML = `<strong>${schedule.name}</strong><br>${timeRangesText}<br>${modeName}`;
+            } else {
+                const scheduleNames = activeSchedules.map(s => s.name).join(', ');
+                this.scheduleDetails.innerHTML = `<strong>${activeSchedules.length} schedules:</strong> ${scheduleNames}`;
+            }
+        } catch (error) {
+            console.error('Error fetching schedules:', error);
+            this.scheduleDetails.textContent = 'Schedule Override Disabled';
+        }
+    }
+
+    getDayName(dayIndex) {
+        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        return days[dayIndex];
+    }
+
+    formatTime(hours, minutes) {
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    }
+
+    convertTo12Hour(time24) {
+        const [hours, minutes] = time24.split(':').map(Number);
+        const period = hours >= 12 ? 'PM' : 'AM';
+        const hours12 = hours % 12 || 12;
+        return `${hours12}:${String(minutes).padStart(2, '0')} ${period}`;
     }
 
     updateCameraStatus(devices) {

@@ -2,7 +2,7 @@ import { loadSchedules } from '../utils/scheduleStorage.js';
 import { ws, isConnected } from '../config/state.js';
 import { getAllDevices } from './deviceService.js';
 import { setDevicePowerMode, getModeNameForLogging } from '../utils/devicePowerModes.js';
-import { logTransition } from '../utils/csvLogger.js';
+import { logTransition, loadSettingsFromCSV } from '../utils/csvLogger.js';
 import WebSocket from 'ws';
 
 let scheduledTasks = new Map();
@@ -41,7 +41,19 @@ export function reloadSchedules() {
     checkAndExecuteSchedules();
 }
 
+export async function checkSchedulesNow() {
+    console.log('Immediate schedule check triggered...');
+    await checkAndExecuteSchedules();
+}
+
 async function checkAndExecuteSchedules() {
+    const settings = loadSettingsFromCSV();
+    
+    if (settings && settings.overrideSchedule === true) {
+        console.log('Schedule execution skipped: Override Schedule is enabled');
+        return;
+    }
+
     const schedules = loadSchedules();
     const now = new Date();
     const currentDay = getDayName(now.getDay());
