@@ -25,7 +25,6 @@ class SettingsManager {
             defaultMode: 'recording',
             toggleDelay: 2,
             muteConnectionAlerts: false,
-            motionTriggeredAutoSwitch: true,
             selectedCameras: [],
             overrideSchedule: false
         };
@@ -89,7 +88,6 @@ class SettingsManager {
         document.getElementById('defaultMode').value = this.settings.defaultMode;
         document.getElementById('toggleDelay').value = this.settings.toggleDelay;
         document.getElementById('muteConnectionAlerts').checked = this.settings.muteConnectionAlerts;
-        document.getElementById('motionTriggeredAutoSwitch').checked = this.settings.motionTriggeredAutoSwitch !== false;
     }
 
     getSettingsFromUI() {
@@ -102,8 +100,7 @@ class SettingsManager {
             confirmActions: document.getElementById('confirmActions').checked,
             defaultMode: document.getElementById('defaultMode').value,
             toggleDelay: parseInt(document.getElementById('toggleDelay').value),
-            muteConnectionAlerts: document.getElementById('muteConnectionAlerts').checked,
-            motionTriggeredAutoSwitch: document.getElementById('motionTriggeredAutoSwitch').checked
+            muteConnectionAlerts: document.getElementById('muteConnectionAlerts').checked
         };
     }
 }
