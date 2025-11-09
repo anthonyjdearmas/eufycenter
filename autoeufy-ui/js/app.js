@@ -204,9 +204,7 @@ class CameraModeToggle {
         this.updateToggleButtonState();
         this.updateScheduleDisplay();
         
-        if (settings.overrideSchedule) {
-            this.checkConnection();
-        }
+        await this.checkConnection();
     }
 
     updateOverrideScheduleButtonAppearance() {
