@@ -3,9 +3,11 @@ import { PORT } from './src/config/constants.js';
 import { corsMiddleware } from './src/middleware/cors.js';
 import { initializeDevicePowerModes, loadDevicePowerModesFromCSV } from './src/utils/devicePowerModes.js';
 import { startEufyServer } from './src/services/websocketService.js';
+import { startScheduler } from './src/services/schedulerService.js';
 import deviceRoutes from './src/routes/deviceRoutes.js';
 import cameraRoutes from './src/routes/cameraRoutes.js';
 import settingsRoutes from './src/routes/settingsRoutes.js';
+import scheduleRoutes from './src/routes/scheduleRoutes.js';
 
 const app = express();
 
@@ -32,7 +34,12 @@ app.get('/health', (req, res) => {
 app.use('/api', deviceRoutes);
 app.use('/api', cameraRoutes);
 app.use('/api', settingsRoutes);
+app.use('/api', scheduleRoutes);
 
 app.listen(PORT, () => {
     console.log(`Example app listening at http://localhost:${PORT}`);
+    
+    setTimeout(() => {
+        startScheduler();
+    }, 5000);
 });

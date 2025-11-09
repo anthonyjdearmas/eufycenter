@@ -11,6 +11,7 @@ class CameraModeToggle {
         this.connectionStatus = document.getElementById('connectionStatus');
         this.loadingOverlay = document.getElementById('loadingOverlay');
         this.cameraDetails = document.getElementById('cameraDetails');
+        this.overrideScheduleButton = document.getElementById('overrideScheduleToggle');
         
         this.isToggling = false;
         this.currentMode = null;
@@ -21,10 +22,13 @@ class CameraModeToggle {
 
     async init() {
         this.toggleButton.addEventListener('click', () => this.handleToggle());
+        this.overrideScheduleButton.addEventListener('click', () => this.handleOverrideScheduleToggle());
         
         await this.settingsManager.loadSettingsFromServer();
         
         this.initializeSettings();
+        
+        this.updateOverrideScheduleButtonAppearance();
         
         this.checkConnection();
         
@@ -119,6 +123,8 @@ class CameraModeToggle {
             this.setupAutoRefresh();
         }
         
+        this.updateToggleButtonState();
+        
         this.cameraManager.refreshCameraDetailsDisplay(this.cameraDetails);
         
         const cameraList = document.getElementById('cameraList');
@@ -161,7 +167,7 @@ class CameraModeToggle {
         this.uiService.updateConnectionStatus(this.connectionStatus, connected, error);
         
         if (connected) {
-            this.toggleButton.disabled = false;
+            this.updateToggleButtonState();
             this.uiService.stopConnectionErrorAlerts();
         } else {
             this.toggleButton.disabled = true;
@@ -174,6 +180,39 @@ class CameraModeToggle {
         }
     }
 
+    updateToggleButtonState() {
+        const settings = this.settingsManager.getSettings();
+        if (settings.overrideSchedule) {
+            this.toggleButton.disabled = false;
+        } else {
+            this.toggleButton.disabled = true;
+            this.toggleStatus.textContent = 'Schedule Override Disabled';
+        }
+    }
+
+    async handleOverrideScheduleToggle() {
+        const settings = this.settingsManager.getSettings();
+        settings.overrideSchedule = !settings.overrideSchedule;
+        this.settingsManager.updateSettings(settings);
+        await this.settingsManager.saveSettings();
+        
+        this.updateOverrideScheduleButtonAppearance();
+        this.updateToggleButtonState();
+        
+        if (settings.overrideSchedule) {
+            this.checkConnection();
+        }
+    }
+
+    updateOverrideScheduleButtonAppearance() {
+        const settings = this.settingsManager.getSettings();
+        if (settings.overrideSchedule) {
+            this.overrideScheduleButton.classList.add('active');
+        } else {
+            this.overrideScheduleButton.classList.remove('active');
+        }
+    }
+
     updateCameraStatus(devices) {
         const result = this.cameraManager.updateCameraStatus(devices);
         if (!result) {
@@ -181,7 +220,12 @@ class CameraModeToggle {
             return;
         }
         
-        this.toggleStatus.textContent = result.statusText;
+        const settings = this.settingsManager.getSettings();
+        if (settings.overrideSchedule) {
+            this.toggleStatus.textContent = result.statusText;
+        } else {
+            this.toggleStatus.textContent = 'Schedule Override Disabled';
+        }
         this.uiService.updateToggleAppearance(this.toggleButton, result.isInBatteryMode);
         this.cameraManager.updateCameraDetails(result.cameras, this.cameraDetails);
     }
@@ -190,6 +234,11 @@ class CameraModeToggle {
         if (this.isToggling) return;
         
         const settings = this.settingsManager.getSettings();
+        
+        if (!settings.overrideSchedule) {
+            this.uiService.showNotification('Cannot toggle: Schedule Override is disabled. Enable it in settings to use manual control.', 'warning');
+            return;
+        }
         
         if (settings.confirmActions) {
             const selectedCount = settings.selectedCameras ? settings.selectedCameras.length : 0;

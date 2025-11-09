@@ -26,7 +26,8 @@ class SettingsManager {
             toggleDelay: 2,
             muteConnectionAlerts: false,
             motionTriggeredAutoSwitch: true,
-            selectedCameras: []
+            selectedCameras: [],
+            overrideSchedule: false
         };
     }
 
