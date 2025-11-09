@@ -427,6 +427,17 @@ body.connection-error.error-flash {
     color: white !important;
 }
 
+.modal-body .form-label,
+.modal-body .form-check-label,
+.modal-body .form-text,
+.modal-body .text-muted {
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.modal-body .about-info p {
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+
 .form-check-input:checked {
     background-color: #3498db;
     border-color: #3498db;

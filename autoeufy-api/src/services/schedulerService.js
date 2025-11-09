@@ -118,12 +118,30 @@ async function executeSchedule(schedule) {
         console.log(`Executing schedule: ${schedule.name}`);
         console.log(`Target mode: ${schedule.mode}, All other motions: ${schedule.allOtherMotions}`);
 
+        const settings = loadSettingsFromCSV();
+        let selectedCameras = [];
+        
+        if (settings && settings.selectedCameras) {
+            try {
+                selectedCameras = typeof settings.selectedCameras === 'string' 
+                    ? JSON.parse(settings.selectedCameras) 
+                    : settings.selectedCameras;
+            } catch (e) {
+                console.error('Error parsing selectedCameras:', e);
+            }
+        }
+
         const allDevices = await getAllDevices();
         let cameras = allDevices.filter(device => device.type === 'device');
 
+        if (selectedCameras.length > 0) {
+            cameras = cameras.filter(camera => selectedCameras.includes(camera.serialNumber));
+            console.log(`Filtered to ${cameras.length} selected cameras from settings`);
+        }
+
         if (schedule.cameras && Array.isArray(schedule.cameras) && schedule.cameras.length > 0) {
             cameras = cameras.filter(camera => schedule.cameras.includes(camera.serialNumber));
-            console.log(`Filtered to ${cameras.length} scheduled cameras`);
+            console.log(`Further filtered to ${cameras.length} cameras specified in schedule`);
         }
 
         if (cameras.length === 0) {
