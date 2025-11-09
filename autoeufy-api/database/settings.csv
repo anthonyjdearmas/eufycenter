@@ -1,2 +1,2 @@
-apiEndpoint,refreshInterval,showBatteryLevels,autoExpandDetails,soundEffects,confirmActions,defaultMode,toggleDelay,muteConnectionAlerts,selectedCameras,devicePowerMode_T8113N63212153EF,devicePowerMode_T8113N63212153E0,devicePowerMode_T8170T102427108A,devicePowerMode_T8170T1024353ED4
-http://localhost:8080,30,true,true,false,false,recording,2,false,"[""T8170T102427108A"",""T8170T1024353ED4""]",2,0,0,0
+apiEndpoint,refreshInterval,showBatteryLevels,autoExpandDetails,soundEffects,confirmActions,defaultMode,toggleDelay,muteConnectionAlerts,selectedCameras,motionTriggeredAutoSwitch,devicePowerMode_T8113N63212153EF,devicePowerMode_T8113N63212153E0,devicePowerMode_T8170T102427108A,devicePowerMode_T8170T1024353ED4
+http://localhost:8080,30,true,true,false,false,recording,2,false,"[""T8170T102427108A"",""T8170T1024353ED4""]",true,2,0,0,0

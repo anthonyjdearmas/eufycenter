@@ -57,6 +57,9 @@ class CameraModeToggle {
         this.lastMotionTimes = {};
         this.timeUpdateInterval = null;
         
+        // SSE connection for real-time motion updates
+        this.motionEventSource = null;
+        
         this.init();
     }
 
@@ -77,6 +80,8 @@ class CameraModeToggle {
         
         this.startTimeUpdateInterval();
         
+        this.connectToMotionEvents();
+        
         window.addEventListener('beforeunload', () => {
             this.cleanup();
         });
@@ -90,6 +95,78 @@ class CameraModeToggle {
         }
         if (this.timeUpdateInterval) {
             clearInterval(this.timeUpdateInterval);
+        }
+        if (this.motionEventSource) {
+            this.motionEventSource.close();
+        }
+    }
+    
+    connectToMotionEvents() {
+        if (this.motionEventSource) {
+            this.motionEventSource.close();
+        }
+        
+        try {
+            this.motionEventSource = new EventSource(`${this.apiBase}/api/motion-events`);
+            
+            this.motionEventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.status === 'connected') {
+                        console.log('Connected to motion event stream');
+                        return;
+                    }
+                    
+                    if (data.motionDetected !== undefined) {
+                        this.handleRealtimeMotionEvent(data);
+                    }
+                } catch (error) {
+                    console.error('Error parsing motion event:', error);
+                }
+            };
+            
+            this.motionEventSource.onerror = (error) => {
+                if (this.motionEventSource.readyState === EventSource.CONNECTING) {
+                    console.log('Motion event stream reconnecting...');
+                } else if (this.motionEventSource.readyState === EventSource.CLOSED) {
+                    console.log('Motion event stream closed, will reconnect in 5 seconds...');
+                    setTimeout(() => {
+                        if (!this.motionEventSource || this.motionEventSource.readyState === EventSource.CLOSED) {
+                            console.log('Reconnecting to motion event stream...');
+                            this.connectToMotionEvents();
+                        }
+                    }, 5000);
+                }
+            };
+        } catch (error) {
+            console.error('Failed to connect to motion event stream:', error);
+        }
+    }
+    
+    handleRealtimeMotionEvent(data) {
+        const { serialNumber, deviceName, motionDetected, timestamp } = data;
+        
+        if (motionDetected) {
+            console.log(`🚨 Real-time motion detected: ${deviceName} at ${timestamp}`);
+            
+            const timestampMs = new Date(timestamp).getTime();
+            this.lastMotionTimes[serialNumber] = timestampMs;
+            
+            this.updateMotionSensorLastTime(serialNumber);
+            
+            const sensorItem = document.querySelector(`[data-sensor-serial="${serialNumber}"]`);
+            if (sensorItem) {
+                sensorItem.classList.add('motion-active');
+                setTimeout(() => {
+                    sensorItem.classList.remove('motion-active');
+                }, 3000);
+            }
+            
+            setTimeout(() => {
+                console.log('Refreshing camera status after motion detection...');
+                this.checkConnection();
+            }, 2000);
         }
     }
     
@@ -226,6 +303,7 @@ class CameraModeToggle {
             defaultMode: 'recording',
             toggleDelay: 2,
             muteConnectionAlerts: false,
+            motionTriggeredAutoSwitch: true,
             selectedCameras: []
         };
         
@@ -300,6 +378,7 @@ class CameraModeToggle {
         document.getElementById('defaultMode').value = this.settings.defaultMode;
         document.getElementById('toggleDelay').value = this.settings.toggleDelay;
         document.getElementById('muteConnectionAlerts').checked = this.settings.muteConnectionAlerts;
+        document.getElementById('motionTriggeredAutoSwitch').checked = this.settings.motionTriggeredAutoSwitch !== false;
         
         // Add save settings event listener
         document.getElementById('saveSettings').addEventListener('click', () => {
@@ -347,6 +426,7 @@ class CameraModeToggle {
             defaultMode: document.getElementById('defaultMode').value,
             toggleDelay: parseInt(document.getElementById('toggleDelay').value),
             muteConnectionAlerts: document.getElementById('muteConnectionAlerts').checked,
+            motionTriggeredAutoSwitch: document.getElementById('motionTriggeredAutoSwitch').checked,
             selectedCameras: this.getSelectedCameras()
         };
         
@@ -927,27 +1007,22 @@ class CameraModeToggle {
 
             const result = await response.json();
             
-            // Play sound effect if enabled
+            const isSelectiveMode = this.settings.selectedCameras && this.settings.selectedCameras.length > 0;
+            const cameraCount = result.summary.totalCameras;
+            const cameraText = isSelectiveMode 
+                ? `${cameraCount} selected camera${cameraCount > 1 ? 's' : ''}`
+                : `all ${cameraCount} camera${cameraCount > 1 ? 's' : ''}`;
             
-            // Filter cameras to only include selected ones if camera selection is enabled
-            if (this.settings.selectedCameras && this.settings.selectedCameras.length > 0) {
-                cameras = cameras.filter(camera => this.settings.selectedCameras.includes(camera.serialNumber));
-            }
-            
-            // Check if all selected cameras have reached target state
-            let allCamerasReady = true;
-            let transitionedCount = 0;
-            let totalCameras = cameras.length;
             this.showNotification(`Toggle command sent to ${cameraText}. Waiting for completion...`, 'info');
             
-            // Now wait for all selected cameras to reach their target state
             await this.waitForCameraTransition(result.targetSettings);
             
-            // Show final success notification with selection-aware text
             const successText = isSelectiveMode
-                ? `Selected cameras successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`
-                : `All cameras successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`;
+                ? `${cameraCount} selected camera${cameraCount > 1 ? 's' : ''} successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`
+                : `All ${cameraCount} camera${cameraCount > 1 ? 's' : ''} successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`;
             this.showNotification(successText, 'success');
+            
+            await this.checkConnection();
             
         } catch (error) {
             this.showNotification(`Toggle failed: ${error.message}`, 'danger');

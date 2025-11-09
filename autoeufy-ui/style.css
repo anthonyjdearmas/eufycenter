@@ -348,6 +348,39 @@ body.connection-error.error-flash {
     50% { opacity: 0.6; }
 }
 
+.motion-sensor-item.motion-active {
+    background: rgba(231, 76, 60, 0.3) !important;
+    animation: motion-pulse 0.5s ease-in-out 3;
+    border: 2px solid #e74c3c;
+}
+
+.motion-sensor-item.motion-active i.bi-broadcast {
+    color: #e74c3c !important;
+    animation: motion-icon-pulse 0.5s ease-in-out 3;
+}
+
+@keyframes motion-pulse {
+    0%, 100% { 
+        background: rgba(231, 76, 60, 0.3) !important;
+        transform: scale(1);
+    }
+    50% { 
+        background: rgba(231, 76, 60, 0.6) !important;
+        transform: scale(1.02);
+    }
+}
+
+@keyframes motion-icon-pulse {
+    0%, 100% { 
+        color: #e74c3c !important;
+        transform: scale(1);
+    }
+    50% { 
+        color: #c0392b !important;
+        transform: scale(1.2);
+    }
+}
+
 /* Camera Details */
 .camera-details {
     max-height: 300px;

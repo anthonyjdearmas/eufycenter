@@ -25,6 +25,16 @@ let sseClients = [];
 // Store current motion detection states
 let motionStates = {};
 
+// Store last known PIR event timestamps for motion sensors
+let lastPirEventTimestamps = {};
+let motionSensorPollingInterval = null;
+
+// Motion-triggered mode switching state
+let motionTriggeredModeActive = false;
+let motionTriggeredTimeout = null;
+let previousCameraModes = {};
+const MOTION_MODE_DURATION = 5 * 60 * 1000;
+
 // Initialize default power modes for known devices
 function initializeDevicePowerModes() {
     // Default to Optimal Surveillance mode (0) for all devices initially (this is the battery-saving mode)
@@ -274,6 +284,355 @@ function saveDevicePowerModesToCSV() {
     }
 }
 
+async function switchCamerasToCustomizedRecording(selectedCameras) {
+    if (!ws || !isConnected) {
+        console.error('Cannot switch cameras: not connected to Eufy service');
+        return false;
+    }
+
+    try {
+        const allDevices = await getAllDevices();
+        let cameras = allDevices.filter(device => device.type === 'device' && device.category === 'camera');
+        
+        if (selectedCameras && Array.isArray(selectedCameras) && selectedCameras.length > 0) {
+            cameras = cameras.filter(camera => selectedCameras.includes(camera.serialNumber));
+        }
+
+        if (cameras.length === 0) {
+            console.log('No cameras to switch');
+            return false;
+        }
+
+        console.log(`🎥 Motion detected! Switching ${cameras.length} cameras to Customized Recording mode...`);
+
+        for (const camera of cameras) {
+            const currentMode = getDevicePowerMode(camera.serialNumber);
+            previousCameraModes[camera.serialNumber] = currentMode;
+
+            if (currentMode !== 2) {
+                try {
+                    console.log(`   Setting power mode to Customized Recording (2)...`);
+                    await new Promise((resolve, reject) => {
+                        const messageHandler = (data) => {
+                            const message = JSON.parse(data.toString());
+                            if (message.messageId === `motion_set_power_${camera.serialNumber}_${requestId}`) {
+                                ws.removeListener('message', messageHandler);
+                                if (message.success) {
+                                    resolve();
+                                } else {
+                                    reject(new Error(`Failed to set power mode for ${camera.serialNumber}`));
+                                }
+                            }
+                        };
+                        
+                        const requestId = Date.now();
+                        ws.on('message', messageHandler);
+                        
+                        const message = {
+                            messageId: `motion_set_power_${camera.serialNumber}_${requestId}`,
+                            command: 'device.set_property',
+                            serialNumber: camera.serialNumber,
+                            name: 'powerWorkingMode',
+                            value: 2
+                        };
+                        ws.send(JSON.stringify(message));
+                        
+                        setTimeout(() => {
+                            ws.removeListener('message', messageHandler);
+                            reject(new Error(`Timeout setting power mode for ${camera.serialNumber}`));
+                        }, 5000);
+                    });
+
+                    setDevicePowerMode(camera.serialNumber, 2);
+                    
+                    console.log(`   Enabling All Other Motions...`);
+                    await new Promise((resolve, reject) => {
+                        const messageHandler = (data) => {
+                            const message = JSON.parse(data.toString());
+                            if (message.messageId === `motion_set_allmotion_${camera.serialNumber}_${requestId}`) {
+                                ws.removeListener('message', messageHandler);
+                                if (message.success) {
+                                    resolve();
+                                } else {
+                                    reject(new Error(`Failed to set all other motions for ${camera.serialNumber}`));
+                                }
+                            }
+                        };
+                        
+                        const requestId = Date.now();
+                        ws.on('message', messageHandler);
+                        
+                        const message = {
+                            messageId: `motion_set_allmotion_${camera.serialNumber}_${requestId}`,
+                            command: 'device.set_property',
+                            serialNumber: camera.serialNumber,
+                            name: 'motionDetectionTypeAllOtherMotions',
+                            value: true
+                        };
+                        ws.send(JSON.stringify(message));
+                        
+                        setTimeout(() => {
+                            ws.removeListener('message', messageHandler);
+                            reject(new Error(`Timeout setting all other motions for ${camera.serialNumber}`));
+                        }, 5000);
+                    });
+                    
+                    console.log(`✅ ${camera.name}: Switched to Customized Recording with All Other Motions enabled (was mode ${currentMode})`);
+                } catch (error) {
+                    console.error(`❌ Error switching ${camera.name}:`, error.message);
+                }
+            } else {
+                console.log(`ℹ️  ${camera.name}: Already in Customized Recording mode`);
+            }
+        }
+
+        logTransition({
+            transitionType: 'Motion-Triggered Auto Switch',
+            fromMode: 'Mixed modes',
+            toMode: getModeNameForLogging(2),
+            camerasAffected: `${cameras.length} cameras: ${cameras.map(c => c.name).join('; ')}`,
+            notes: `Triggered by motion sensor, will revert in ${MOTION_MODE_DURATION / 60000} minutes`
+        });
+
+        return true;
+    } catch (error) {
+        console.error('Error switching cameras to customized recording:', error);
+        return false;
+    }
+}
+
+async function revertCamerasToPreviousModes() {
+    if (!ws || !isConnected) {
+        console.error('Cannot revert cameras: not connected to Eufy service');
+        return false;
+    }
+
+    try {
+        console.log('⏰ 5 minutes elapsed. Reverting cameras to previous modes...');
+
+        const camerasToRevert = Object.keys(previousCameraModes);
+        if (camerasToRevert.length === 0) {
+            console.log('No cameras to revert');
+            return false;
+        }
+
+        const allDevices = await getAllDevices();
+        const cameraNames = [];
+
+        for (const serialNumber of camerasToRevert) {
+            const previousMode = previousCameraModes[serialNumber];
+            const currentMode = getDevicePowerMode(serialNumber);
+
+            if (currentMode !== previousMode) {
+                try {
+                    await new Promise((resolve, reject) => {
+                        const messageHandler = (data) => {
+                            const message = JSON.parse(data.toString());
+                            if (message.messageId === `revert_power_${serialNumber}_${requestId}`) {
+                                ws.removeListener('message', messageHandler);
+                                if (message.success) {
+                                    resolve();
+                                } else {
+                                    reject(new Error(`Failed to revert power mode for ${serialNumber}`));
+                                }
+                            }
+                        };
+                        
+                        const requestId = Date.now();
+                        ws.on('message', messageHandler);
+                        
+                        const message = {
+                            messageId: `revert_power_${serialNumber}_${requestId}`,
+                            command: 'device.set_property',
+                            serialNumber: serialNumber,
+                            name: 'powerWorkingMode',
+                            value: previousMode
+                        };
+                        ws.send(JSON.stringify(message));
+                        
+                        setTimeout(() => {
+                            ws.removeListener('message', messageHandler);
+                            reject(new Error(`Timeout reverting power mode for ${serialNumber}`));
+                        }, 5000);
+                    });
+
+                    setDevicePowerMode(serialNumber, previousMode);
+                    
+                    const device = allDevices.find(d => d.serialNumber === serialNumber);
+                    const cameraName = device ? device.name : serialNumber;
+                    cameraNames.push(cameraName);
+                    
+                    console.log(`✅ ${cameraName}: Reverted to mode ${previousMode} (was mode ${currentMode})`);
+                } catch (error) {
+                    console.error(`❌ Error reverting ${serialNumber}:`, error.message);
+                }
+            }
+        }
+
+        if (cameraNames.length > 0) {
+            logTransition({
+                transitionType: 'Motion-Triggered Auto Revert',
+                fromMode: getModeNameForLogging(2),
+                toMode: 'Previous modes',
+                camerasAffected: `${cameraNames.length} cameras: ${cameraNames.join('; ')}`,
+                notes: `Reverted after ${MOTION_MODE_DURATION / 60000} minutes`
+            });
+        }
+
+        previousCameraModes = {};
+        motionTriggeredModeActive = false;
+
+        return true;
+    } catch (error) {
+        console.error('Error reverting cameras to previous modes:', error);
+        return false;
+    }
+}
+
+async function handleMotionDetection(serialNumber, state) {
+    console.log(`\n=== handleMotionDetection called ===`);
+    console.log(`   Sensor: ${serialNumber}`);
+    console.log(`   State: ${state}`);
+    
+    if (!state) {
+        console.log(`   ❌ State is false, skipping`);
+        return;
+    }
+
+    const settings = loadSettingsFromCSV();
+    console.log(`   Settings loaded:`, settings);
+    
+    if (!settings?.motionTriggeredAutoSwitch) {
+        console.log(`   ❌ Motion-triggered auto-switch is disabled`);
+        return;
+    }
+    
+    console.log(`   ✅ Motion-triggered auto-switch is enabled`);
+    
+    const selectedCameras = settings?.selectedCameras;
+    
+    if (!selectedCameras || selectedCameras.length === 0) {
+        console.log('   ⚠️  No cameras selected for auto-switching');
+        return;
+    }
+
+    let camerasToSwitch;
+    try {
+        camerasToSwitch = typeof selectedCameras === 'string' ? JSON.parse(selectedCameras) : selectedCameras;
+        console.log(`   Selected cameras to switch:`, camerasToSwitch);
+    } catch (e) {
+        console.error('   ❌ Error parsing selectedCameras:', e);
+        return;
+    }
+
+    if (motionTriggeredTimeout) {
+        clearTimeout(motionTriggeredTimeout);
+        console.log('   🔄 Motion detected again - resetting 5-minute timer');
+    }
+
+    if (!motionTriggeredModeActive) {
+        console.log(`   📹 Initiating camera mode switch...`);
+        const success = await switchCamerasToCustomizedRecording(camerasToSwitch);
+        if (success) {
+            motionTriggeredModeActive = true;
+            console.log(`   ✅ Camera mode switch completed successfully`);
+        } else {
+            console.log(`   ❌ Camera mode switch failed`);
+        }
+    } else {
+        console.log('   🔄 Already in motion-triggered mode - extending timer by 5 more minutes');
+    }
+
+    motionTriggeredTimeout = setTimeout(async () => {
+        console.log(`\n⏰ 5-minute timer expired, reverting cameras...`);
+        await revertCamerasToPreviousModes();
+        motionTriggeredTimeout = null;
+    }, MOTION_MODE_DURATION);
+    
+    console.log(`=== handleMotionDetection complete ===\n`);
+}
+
+async function checkMotionSensorTimestamps() {
+    if (!ws || !isConnected) return;
+    
+    try {
+        const allDevices = await getAllDevices();
+        const motionSensors = allDevices.filter(device => device.category === 'motion_sensor');
+        
+        for (const sensor of motionSensors) {
+            try {
+                const properties = await new Promise((resolve, reject) => {
+                    const messageHandler = (data) => {
+                        const message = JSON.parse(data.toString());
+                        if (message.messageId === `poll_motion_${sensor.serialNumber}_${requestId}`) {
+                            ws.removeListener('message', messageHandler);
+                            if (message.success && (message.properties || (message.result && message.result.properties))) {
+                                const properties = message.properties || message.result.properties;
+                                resolve(properties);
+                            } else {
+                                reject(new Error(`Failed to get properties for ${sensor.serialNumber}`));
+                            }
+                        }
+                    };
+                    
+                    const requestId = Date.now();
+                    ws.on('message', messageHandler);
+                    
+                    const message = {
+                        messageId: `poll_motion_${sensor.serialNumber}_${requestId}`,
+                        command: 'device.get_properties',
+                        serialNumber: sensor.serialNumber
+                    };
+                    ws.send(JSON.stringify(message));
+                    
+                    setTimeout(() => {
+                        ws.removeListener('message', messageHandler);
+                        reject(new Error(`Timeout getting properties for ${sensor.serialNumber}`));
+                    }, 5000);
+                });
+                
+                const currentTimestamp = properties.motionSensorPirEvent;
+                const lastTimestamp = lastPirEventTimestamps[sensor.serialNumber];
+                
+                if (lastTimestamp && currentTimestamp && currentTimestamp !== lastTimestamp) {
+                    const timestamp = new Date().toISOString();
+                    const deviceName = properties.name || sensor.name;
+                    
+                    console.log(`🚨 [${timestamp}] MOTION DETECTED (timestamp change) - Device: ${deviceName} (${sensor.serialNumber})`);
+                    console.log(`   Previous: ${new Date(lastTimestamp).toISOString()}`);
+                    console.log(`   Current:  ${new Date(currentTimestamp).toISOString()}`);
+                    
+                    motionStates[sensor.serialNumber] = {
+                        state: true,
+                        timestamp: timestamp,
+                        deviceName: deviceName
+                    };
+                    
+                    const sseData = JSON.stringify({
+                        serialNumber: sensor.serialNumber,
+                        deviceName: deviceName,
+                        motionDetected: true,
+                        timestamp: timestamp
+                    });
+                    
+                    sseClients.forEach(client => {
+                        client.write(`data: ${sseData}\n\n`);
+                    });
+                    
+                    handleMotionDetection(sensor.serialNumber, true);
+                }
+                
+                lastPirEventTimestamps[sensor.serialNumber] = currentTimestamp;
+                
+            } catch (error) {
+                console.error(`Error checking motion sensor ${sensor.serialNumber}:`, error.message);
+            }
+        }
+    } catch (error) {
+        console.error('Error in checkMotionSensorTimestamps:', error);
+    }
+}
+
 // Initialize device power modes
 initializeDevicePowerModes();
 loadDevicePowerModesFromCSV();
@@ -379,40 +738,18 @@ eufyServer.stdout.on('data', (data) => {
                     console.log('Successfully connected to Eufy service');
                     // After successful connection, refresh devices
                     refreshDevices();
+                    
+                    // Start polling motion sensor timestamps every 2 seconds
+                    if (motionSensorPollingInterval) {
+                        clearInterval(motionSensorPollingInterval);
+                    }
+                    motionSensorPollingInterval = setInterval(() => {
+                        checkMotionSensorTimestamps();
+                    }, 2000);
+                    console.log('Started motion sensor timestamp polling (2 second interval)');
                 }
             }
             
-            // Listen for motion detection events
-            if (message.type === 'event' && message.event) {
-                const event = message.event;
-                
-                if (event.source === 'device' && event.event === 'motion detected') {
-                    const timestamp = new Date().toISOString();
-                    const deviceName = event.serialNumber === 'T8910P0025170762' ? 'Side door Sensor' : event.serialNumber;
-                    const motionState = event.state ? 'DETECTED' : 'CLEARED';
-                    
-                    console.log(`🚨 [${timestamp}] MOTION ${motionState} - Device: ${deviceName} (${event.serialNumber})`);
-                    
-                    // Update motion state
-                    motionStates[event.serialNumber] = {
-                        state: event.state,
-                        timestamp: timestamp,
-                        deviceName: deviceName
-                    };
-                    
-                    // Broadcast to all SSE clients
-                    const sseData = JSON.stringify({
-                        serialNumber: event.serialNumber,
-                        deviceName: deviceName,
-                        motionDetected: event.state,
-                        timestamp: timestamp
-                    });
-                    
-                    sseClients.forEach(client => {
-                        client.write(`data: ${sseData}\n\n`);
-                    });
-                }
-            }
         });
 
         ws.on('error', (error) => {
@@ -424,6 +761,12 @@ eufyServer.stdout.on('data', (data) => {
             ws = null;
             isConnected = false;
             devices = [];
+            
+            if (motionSensorPollingInterval) {
+                clearInterval(motionSensorPollingInterval);
+                motionSensorPollingInterval = null;
+                console.log('Stopped motion sensor timestamp polling');
+            }
         });
     }
 });
@@ -649,13 +992,13 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
         let targetMode, targetAllOtherMotions, actionDescription;
         
         // If majority are in customized recording (2) with all other motions enabled
-        if (customizedRecordingCount >= cameras.length / 2 && allOtherMotionsEnabledCount >= cameras.length / 2) {
+        if (customizedRecordingCount >= cameraStates.length / 2 && allOtherMotionsEnabledCount >= cameraStates.length / 2) {
             targetMode = 0; // Switch to Optimal Surveillance (battery saving)
             targetAllOtherMotions = false; // Disable all other motions
             actionDescription = 'Switching to Optimal Surveillance mode (battery saving) and disabling all other motions';
         }
         // If majority are in Surveillance/battery mode (0) with all other motions disabled
-        else if (batteryModeCount >= cameras.length / 2 && allOtherMotionsDisabledCount >= cameras.length / 2) {
+        else if (batteryModeCount >= cameraStates.length / 2 && allOtherMotionsDisabledCount >= cameraStates.length / 2) {
             targetMode = 2; // Switch to customized recording
             targetAllOtherMotions = true; // Enable all other motions
             actionDescription = 'Switching to Customized Recording mode and enabling all other motions';
@@ -906,7 +1249,7 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                 fromMode: getModeNameForLogging(majorityFromMode),
                 toMode: getModeNameForLogging(targetMode),
                 camerasAffected: `${camerasWithChanges} cameras: ${cameraNames}`,
-                notes: `${successfulCameras}/${cameras.length} cameras successful`
+                notes: `${successfulCameras}/${cameraStates.length} cameras successful`
             });
             
             console.log(`Transition logged: ${camerasWithChanges} cameras switched from ${getModeNameForLogging(majorityFromMode)} to ${getModeNameForLogging(targetMode)}`);
@@ -922,7 +1265,7 @@ app.post('/api/cameras/toggle-mode', async (req, res) => {
                 allOtherMotions: targetAllOtherMotions
             },
             summary: {
-                totalCameras: cameras.length,
+                totalCameras: cameraStates.length,
                 successfulCameras: successfulCameras,
                 camerasWithChanges: camerasWithChanges,
                 camerasAlreadyCorrect: successfulCameras - camerasWithChanges
@@ -1184,6 +1527,25 @@ app.get('/api/motion-events', (req, res) => {
     req.on('close', () => {
         sseClients = sseClients.filter(client => client !== res);
     });
+});
+
+app.get('/api/motion-triggered-status', (req, res) => {
+    try {
+        const settings = loadSettingsFromCSV();
+        const timeRemaining = motionTriggeredTimeout ? MOTION_MODE_DURATION : 0;
+        
+        res.send({
+            active: motionTriggeredModeActive,
+            enabled: settings?.motionTriggeredAutoSwitch || false,
+            timeRemainingMs: timeRemaining,
+            timeRemainingMinutes: Math.round(timeRemaining / 60000),
+            affectedCameras: Object.keys(previousCameraModes),
+            previousModes: previousCameraModes
+        });
+    } catch (error) {
+        console.error('Error getting motion-triggered status:', error);
+        res.status(500).send({ error: 'Failed to get status' });
+    }
 });
 
 // Start the Express server
