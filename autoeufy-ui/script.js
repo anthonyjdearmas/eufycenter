@@ -611,10 +611,11 @@ class CameraModeToggle {
     }
     
     refreshCameraDetailsDisplay() {
-        // Re-render camera details with current settings
-        if (this.lastDevicesData) {
+        if (this.lastDevicesData && Array.isArray(this.lastDevicesData)) {
             const cameras = this.lastDevicesData.filter(device => device.category === 'camera');
             this.updateCameraDetails(cameras);
+        } else {
+            this.cameraDetails.innerHTML = '<div class="text-center text-muted">Loading camera details...</div>';
         }
     }
     
@@ -627,10 +628,14 @@ class CameraModeToggle {
             }
             
             const data = await response.json();
+            if (!data.devices || !Array.isArray(data.devices)) {
+                throw new Error('Invalid device data received from server');
+            }
             const cameras = data.devices.filter(device => device.category === 'camera');
             
             this.populateCameraSelection(cameras);
         } catch (error) {
+            console.error('Error loading camera selection:', error);
             this.showCameraSelectionError('Failed to load cameras. Please check your connection.');
         }
     }
@@ -772,7 +777,12 @@ class CameraModeToggle {
     }
 
     updateCameraStatus(devices) {
-        // Store devices data for later use
+        if (!devices || !Array.isArray(devices)) {
+            console.error('Invalid devices data in updateCameraStatus');
+            this.toggleStatus.textContent = 'Error loading camera status';
+            return;
+        }
+        
         this.lastDevicesData = devices;
         let cameras = devices.filter(device => device.category === 'camera');
         
@@ -968,7 +978,7 @@ class CameraModeToggle {
         
         // Show confirmation if enabled
         if (this.settings.confirmActions) {
-            const selectedCount = this.settings.selectedCameras.length;
+            const selectedCount = this.settings.selectedCameras ? this.settings.selectedCameras.length : 0;
             const confirmMessage = selectedCount > 0 
                 ? `Are you sure you want to toggle the camera mode for ${selectedCount} selected camera(s)?`
                 : 'Are you sure you want to toggle the camera mode for all cameras?';
@@ -987,6 +997,19 @@ class CameraModeToggle {
         }
         
         try {
+            // Verify we have camera data before proceeding
+            if (!this.lastDevicesData || !Array.isArray(this.lastDevicesData)) {
+                // Try to fetch camera data first
+                try {
+                    await this.checkConnection();
+                    if (!this.lastDevicesData || !Array.isArray(this.lastDevicesData)) {
+                        throw new Error('No camera data available. Please try refreshing the page.');
+                    }
+                } catch (connError) {
+                    throw new Error('Failed to connect to camera system. Please check your connection.');
+                }
+            }
+            
             // Prepare request body with selected cameras
             const requestBody = {};
             if (this.settings.selectedCameras && this.settings.selectedCameras.length > 0) {
@@ -1006,6 +1029,9 @@ class CameraModeToggle {
             }
 
             const result = await response.json();
+            if (!result || !result.summary || !result.targetSettings) {
+                throw new Error('Invalid response from server');
+            }
             
             const isSelectiveMode = this.settings.selectedCameras && this.settings.selectedCameras.length > 0;
             const cameraCount = result.summary.totalCameras;
@@ -1015,17 +1041,25 @@ class CameraModeToggle {
             
             this.showNotification(`Toggle command sent to ${cameraText}. Waiting for completion...`, 'info');
             
-            await this.waitForCameraTransition(result.targetSettings);
+            try {
+                await this.waitForCameraTransition(result.targetSettings);
+                
+                const successText = isSelectiveMode
+                    ? `${cameraCount} selected camera${cameraCount > 1 ? 's' : ''} successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`
+                    : `All ${cameraCount} camera${cameraCount > 1 ? 's' : ''} successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`;
+                this.showNotification(successText, 'success');
+            } catch (transitionError) {
+                console.error('Camera transition error:', transitionError);
+                // Still show partial success since the command was sent
+                this.showNotification(`Command sent successfully, but couldn't verify all cameras completed transition.`, 'warning');
+            }
             
-            const successText = isSelectiveMode
-                ? `${cameraCount} selected camera${cameraCount > 1 ? 's' : ''} successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`
-                : `All ${cameraCount} camera${cameraCount > 1 ? 's' : ''} successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`;
-            this.showNotification(successText, 'success');
-            
+            // Refresh camera status
             await this.checkConnection();
             
         } catch (error) {
-            this.showNotification(`Toggle failed: ${error.message}`, 'danger');
+            console.error('Toggle error:', error);
+            this.showNotification(`Toggle failed: ${error.message || 'Unknown error'}`, 'danger');
         } finally {
             this.isToggling = false;
             this.showLoading(false);
@@ -1048,6 +1082,12 @@ class CameraModeToggle {
                 }
                 
                 const data = await response.json();
+                if (!data.devices || !Array.isArray(data.devices)) {
+                    console.error('Invalid device data during transition polling');
+                    await new Promise(resolve => setTimeout(resolve, pollInterval));
+                    continue;
+                }
+                
                 let cameras = data.devices.filter(device => device.category === 'camera');
                 
                 // Filter cameras to only include selected ones if camera selection is enabled
