@@ -3,6 +3,7 @@ import WebSocket from 'ws';
 import { setWs, setIsConnected, setDevices } from '../config/state.js';
 import { EUFY_WS_HOST, EUFY_WS_PORT, CONFIG_FILE_PATH } from '../config/constants.js';
 import { refreshDevices } from './deviceService.js';
+import { startScheduler, stopScheduler } from './schedulerService.js';
 
 export function startEufyServer() {
     const eufyServer = spawn('node', [
@@ -49,6 +50,10 @@ function initializeWebSocketConnection() {
                 setIsConnected(true);
                 console.log('Successfully connected to Eufy service');
                 refreshDevices(ws, true);
+                
+                // Start scheduler after successful connection
+                console.log('Starting scheduler after successful WebSocket connection...');
+                startScheduler();
             }
         }
     });
@@ -62,6 +67,10 @@ function initializeWebSocketConnection() {
         setWs(null);
         setIsConnected(false);
         setDevices([]);
+        
+        // Stop scheduler when WebSocket disconnects
+        console.log('Stopping scheduler due to WebSocket disconnection...');
+        stopScheduler();
     });
 
     setWs(ws);

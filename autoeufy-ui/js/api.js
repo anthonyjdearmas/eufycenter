@@ -1,11 +1,10 @@
 class ApiService {
     constructor() {
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const isDockerContainer = window.location.hostname === 'eufy-ui';
-        
-        if (isDockerContainer) {
-            this.apiBase = 'http://eufy-api:8080';
+        // Check if config is available (Docker environment)
+        if (window.API_CONFIG && window.API_CONFIG.baseUrl) {
+            this.apiBase = window.API_CONFIG.baseUrl;
         } else {
+            // Fallback for local development
             this.apiBase = `http://${window.location.hostname}:8080`;
         }
     }
@@ -85,6 +84,14 @@ class ApiService {
 
     async getSchedules() {
         const response = await fetch(`${this.apiBase}/api/schedules`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return await response.json();
+    }
+
+    async getScheduleCompliance() {
+        const response = await fetch(`${this.apiBase}/api/schedules/compliance`);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }

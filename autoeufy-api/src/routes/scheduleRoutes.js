@@ -7,7 +7,7 @@ import {
     getSchedule,
     validateSchedule 
 } from '../utils/scheduleStorage.js';
-import { reloadSchedules } from '../services/schedulerService.js';
+import { reloadSchedules, checkScheduleCompliance, checkSchedulesNow } from '../services/schedulerService.js';
 
 const router = express.Router();
 
@@ -179,6 +179,37 @@ router.patch('/schedules/:id/toggle', (req, res) => {
         res.status(500).send({ 
             success: false, 
             error: error.message 
+        });
+    }
+});
+
+router.get('/schedules/compliance', async (req, res) => {
+    try {
+        const result = await checkScheduleCompliance();
+        res.send(result);
+    } catch (error) {
+        console.error('Error checking schedule compliance:', error);
+        res.status(500).send({ 
+            success: false, 
+            error: error.message,
+            compliance: null
+        });
+    }
+});
+
+router.post('/schedules/trigger', async (req, res) => {
+    try {
+        console.log('Manual schedule trigger requested');
+        await checkSchedulesNow();
+        res.send({
+            success: true,
+            message: 'Schedule check triggered successfully'
+        });
+    } catch (error) {
+        console.error('Error triggering schedule check:', error);
+        res.status(500).send({ 
+            success: false, 
+            error: error.message
         });
     }
 });

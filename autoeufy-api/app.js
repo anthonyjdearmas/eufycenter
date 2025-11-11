@@ -38,8 +38,5 @@ app.use('/api', scheduleRoutes);
 
 app.listen(PORT, () => {
     console.log(`Example app listening at http://localhost:${PORT}`);
-    
-    setTimeout(() => {
-        startScheduler();
-    }, 5000);
+    console.log('Scheduler will start automatically when WebSocket connection is established');
 });

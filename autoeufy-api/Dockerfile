@@ -1,5 +1,8 @@
 FROM node:18-alpine
 
+# Create a non-root user
+RUN addgroup -g 1001 appuser && adduser -D -u 1001 -G appuser appuser
+
 WORKDIR /app
 
 # Copy package files
@@ -11,8 +14,11 @@ RUN npm ci --only=production
 # Copy application code
 COPY . .
 
-# Create database directory if it doesn't exist
-RUN mkdir -p database
+# Create database directory and set permissions
+RUN mkdir -p database && chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
 
 # Expose port
 EXPOSE 8080

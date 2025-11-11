@@ -14,6 +14,7 @@ class CameraModeToggle {
         this.overrideScheduleButton = document.getElementById('overrideScheduleToggle');
         this.activeScheduleDisplay = document.getElementById('activeScheduleDisplay');
         this.scheduleDetails = document.getElementById('scheduleDetails');
+        this.complianceIndicator = document.getElementById('complianceIndicator');
         
         this.isToggling = false;
         this.currentMode = null;
@@ -235,6 +236,7 @@ class CameraModeToggle {
             
             if (enabledSchedules.length === 0) {
                 this.scheduleDetails.textContent = 'No active schedules';
+                this.complianceIndicator.classList.add('d-none');
                 return;
             }
 
@@ -248,6 +250,7 @@ class CameraModeToggle {
 
             if (activeSchedules.length === 0) {
                 this.scheduleDetails.textContent = 'No schedules for today';
+                this.complianceIndicator.classList.add('d-none');
             } else if (activeSchedules.length === 1) {
                 const schedule = activeSchedules[0];
                 const timeRangesText = schedule.timeRanges
@@ -259,9 +262,14 @@ class CameraModeToggle {
                 const scheduleNames = activeSchedules.map(s => s.name).join(', ');
                 this.scheduleDetails.innerHTML = `<strong>${activeSchedules.length} schedules:</strong> ${scheduleNames}`;
             }
+
+            // Check compliance
+            this.updateComplianceIndicator();
+            
         } catch (error) {
             console.error('Error fetching schedules:', error);
             this.scheduleDetails.textContent = 'Schedule Override Disabled';
+            this.complianceIndicator.classList.add('d-none');
         }
     }
 
@@ -279,6 +287,43 @@ class CameraModeToggle {
         const period = hours >= 12 ? 'PM' : 'AM';
         const hours12 = hours % 12 || 12;
         return `${hours12}:${String(minutes).padStart(2, '0')} ${period}`;
+    }
+
+    async updateComplianceIndicator() {
+        try {
+            // Show checking state
+            this.complianceIndicator.classList.remove('d-none', 'compliant', 'non-compliant');
+            this.complianceIndicator.classList.add('checking');
+            this.complianceIndicator.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+            this.complianceIndicator.title = 'Checking compliance...';
+
+            const result = await this.apiService.getScheduleCompliance();
+            
+            if (result.success && result.compliance) {
+                const compliance = result.compliance;
+                
+                this.complianceIndicator.classList.remove('checking');
+                
+                if (compliance.isCompliant) {
+                    this.complianceIndicator.classList.add('compliant');
+                    this.complianceIndicator.innerHTML = '<i class="bi bi-check-circle-fill"></i>';
+                    this.complianceIndicator.title = `All cameras compliant (${compliance.compliantCameras}/${compliance.totalCameras})`;
+                } else {
+                    this.complianceIndicator.classList.add('non-compliant');
+                    this.complianceIndicator.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i>';
+                    this.complianceIndicator.title = `${compliance.totalCameras - compliance.compliantCameras}/${compliance.totalCameras} cameras not compliant with schedule`;
+                }
+                
+                this.complianceIndicator.classList.remove('d-none');
+            } else {
+                // Hide indicator if compliance check failed
+                this.complianceIndicator.classList.add('d-none');
+            }
+        } catch (error) {
+            console.error('Error checking schedule compliance:', error);
+            // Hide indicator on error
+            this.complianceIndicator.classList.add('d-none');
+        }
     }
 
     updateCameraStatus(devices) {

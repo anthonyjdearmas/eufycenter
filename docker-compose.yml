@@ -15,6 +15,7 @@ services:
       - ./autoeufy-api/persistent.json:/app/persistent.json
     environment:
       - NODE_ENV=production
+      - TZ=America/New_York
     restart: always
     networks:
       - eufy-network
@@ -35,6 +36,8 @@ services:
     container_name: eufy-ui
     ports:
       - "8081:8081"
+    environment:
+      - API_BASE_URL=http://192.168.1.9:8080
     depends_on:
       eufy-api:
         condition: service_healthy

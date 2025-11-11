@@ -26,7 +26,6 @@
     ],
     "mode": 2,
     "allOtherMotions": false,
-    "cameras": [],
     "enabled": true,
     "createdAt": "2024-11-09T20:15:00.000Z"
   },
@@ -46,7 +45,6 @@
     ],
     "mode": 2,
     "allOtherMotions": false,
-    "cameras": [],
     "enabled": true,
     "createdAt": "2024-11-09T20:16:00.000Z"
   }
