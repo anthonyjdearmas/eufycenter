@@ -1,13 +1,13 @@
 {
     "username": "anthonyjdearmas@gmail.com",
-    "password": "Mollygirl1$",
+    "password": "Floridaman9507$",
     "country": "US",
     "language": "en",
     "trustedDeviceName": "Jreba's Home",
     "acceptInvitations": true,
     "pollingIntervalMinutes": 10,
-    "p2pConnectionSetup": 2,
+    "p2pConnectionSetup": 1,
     "stationIPAddresses": {
-        "T8030P1324262B52": "192.168.1.11"
+        "T8030P1324262B52": "10.0.0.2"
     }
 } 

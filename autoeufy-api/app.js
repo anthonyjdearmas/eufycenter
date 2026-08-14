@@ -15,6 +15,7 @@ const port = 8080;
 let ws = null;
 let isConnected = false;
 let devices = [];
+let pendingCaptcha = null;
 
 // Store device power modes since the Eufy API no longer provides this info (removed in schema 13+)
 let devicePowerModes = {};
@@ -217,7 +218,17 @@ eufyServer.stdout.on('data', (data) => {
 
         ws.on('open', () => {
             console.log('Connected to Eufy Security Server');
-            // Connect to Eufy service
+            const setSchema = {
+                messageId: 'set_schema_' + Date.now(),
+                command: 'set_api_schema',
+                schemaVersion: 21
+            };
+            ws.send(JSON.stringify(setSchema));
+            const startListening = {
+                messageId: 'start_listening_' + Date.now(),
+                command: 'start_listening'
+            };
+            ws.send(JSON.stringify(startListening));
             const connectMessage = {
                 messageId: 'connect_' + Date.now(),
                 command: 'driver.connect'
@@ -228,13 +239,24 @@ eufyServer.stdout.on('data', (data) => {
         ws.on('message', (data) => {
             const message = JSON.parse(data.toString());
             console.log('Received message:', message);
+
+            if (message.type === 'event' && message.event && message.event.event === 'captcha request') {
+                pendingCaptcha = { captchaId: message.event.captchaId, captcha: message.event.captcha };
+                console.log('CAPTCHA required! Visit http://localhost:8080/api/captcha to solve it.');
+            }
             
-            // Check if we're connected to Eufy service
             if (message.type === 'result' && message.messageId.startsWith('connect_')) {
                 if (message.success) {
                     isConnected = true;
                     console.log('Successfully connected to Eufy service');
-                    // After successful connection, refresh devices
+                    refreshDevices();
+                }
+            }
+
+            if (message.type === 'result' && message.messageId.startsWith('captcha_')) {
+                if (message.success) {
+                    console.log('Captcha accepted, reconnecting...');
+                    pendingCaptcha = null;
                     refreshDevices();
                 }
             }
@@ -279,7 +301,43 @@ app.get('/', (req, res) => {
     res.send('Eufy Security Example App');
 });
 
-// API endpoint to get all devices
+app.get('/api/captcha', (req, res) => {
+    if (!pendingCaptcha) {
+        return res.send('<h2>No captcha pending. Login may already be complete.</h2>');
+    }
+    res.send(`
+        <html><body style="background:#111;color:#fff;font-family:sans-serif;text-align:center;padding:40px">
+        <h2>Eufy Login - Captcha Required</h2>
+        <p>Enter the text you see in the image below:</p>
+        <img src="${pendingCaptcha.captcha}" style="margin:20px auto;display:block;border:2px solid #fff"/>
+        <form method="POST" action="/api/captcha" style="margin-top:20px">
+            <input type="text" name="code" placeholder="Enter captcha text" style="padding:10px;font-size:18px;width:200px" autofocus/>
+            <button type="submit" style="padding:10px 20px;font-size:18px;cursor:pointer">Submit</button>
+        </form>
+        </body></html>
+    `);
+});
+
+app.use(express.urlencoded({ extended: true }));
+
+app.post('/api/captcha', (req, res) => {
+    if (!pendingCaptcha) {
+        return res.status(400).send({ error: 'No captcha pending' });
+    }
+    const code = req.body.code;
+    if (!code) {
+        return res.status(400).send({ error: 'Missing "code" in request body' });
+    }
+    const message = {
+        messageId: 'captcha_' + Date.now(),
+        command: 'driver.set_captcha',
+        captchaId: pendingCaptcha.captchaId,
+        captcha: code
+    };
+    ws.send(JSON.stringify(message));
+    res.send('<html><body style="background:#111;color:#fff;font-family:sans-serif;text-align:center;padding:40px"><h2>Captcha submitted! Waiting for Eufy to verify...</h2><p>Check server logs for result. Refresh /api/captcha to see status.</p></body></html>');
+});
+
 app.get('/api/devices', async (req, res) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         return res.status(503).send({ error: 'WebSocket not connected' });

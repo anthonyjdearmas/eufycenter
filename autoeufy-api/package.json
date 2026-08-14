@@ -7,8 +7,8 @@
     "start": "node app.js"
   },
   "dependencies": {
+    "eufy-security-ws": "^1.9.9",
     "express": "^4.18.2",
-    "eufy-security-ws": "^1.9.2",
     "ws": "^8.18.0"
   }
-} 
+}
