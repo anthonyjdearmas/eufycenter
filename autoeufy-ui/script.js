@@ -5,7 +5,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     mainButton.addEventListener('click', function() {
         // Simple click handler - could be expanded later
-        console.log('Button clicked!');
         
         // Optional: Show a simple alert or change button text
         this.textContent = this.textContent === 'Click Me!' ? 'Clicked!' : 'Click Me!';
@@ -21,7 +20,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
 class CameraModeToggle {
     constructor() {
-        this.apiBase = 'http://localhost:8080';
+        // Detect if we're running inside Docker or accessed from outside
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const isDockerContainer = window.location.hostname === 'eufy-ui';
+        
+        // Use container name for internal Docker communication, host IP for external access
+        if (isDockerContainer) {
+            this.apiBase = 'http://eufy-api:8080';
+        } else {
+            // For external access, use the same hostname as the UI
+            this.apiBase = `http://${window.location.hostname}:8080`;
+        }
+        
+
         this.toggleButton = document.getElementById('cameraToggle');
         this.toggleStatus = document.getElementById('toggleStatus');
         this.connectionStatus = document.getElementById('connectionStatus');
@@ -42,26 +53,35 @@ class CameraModeToggle {
         this.errorSoundInterval = null;
         this.audioContext = null;
         
+        // Motion sensor time tracking
+        this.lastMotionTimes = {};
+        this.timeUpdateInterval = null;
+        
+        // SSE connection for real-time motion updates
+        this.motionEventSource = null;
+        
         this.init();
     }
 
-    init() {
-        // Add event listeners
+    async init() {
         this.toggleButton.addEventListener('click', () => this.handleToggle());
         
-        // Initialize settings
+        await this.loadSettingsFromServer();
+        
         this.initializeSettings();
         
-        // Initialize audio context for connection error sounds
         this.initializeAudio();
         
-        // Check initial status
         this.checkConnection();
         
-        // Set up auto-refresh with current settings
+        this.loadMotionSensors();
+        
         this.setupAutoRefresh();
         
-        // Add cleanup when page unloads
+        this.startTimeUpdateInterval();
+        
+        this.connectToMotionEvents();
+        
         window.addEventListener('beforeunload', () => {
             this.cleanup();
         });
@@ -72,6 +92,81 @@ class CameraModeToggle {
         this.stopConnectionErrorAlerts();
         if (this.refreshInterval) {
             clearInterval(this.refreshInterval);
+        }
+        if (this.timeUpdateInterval) {
+            clearInterval(this.timeUpdateInterval);
+        }
+        if (this.motionEventSource) {
+            this.motionEventSource.close();
+        }
+    }
+    
+    connectToMotionEvents() {
+        if (this.motionEventSource) {
+            this.motionEventSource.close();
+        }
+        
+        try {
+            this.motionEventSource = new EventSource(`${this.apiBase}/api/motion-events`);
+            
+            this.motionEventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.status === 'connected') {
+                        console.log('Connected to motion event stream');
+                        return;
+                    }
+                    
+                    if (data.motionDetected !== undefined) {
+                        this.handleRealtimeMotionEvent(data);
+                    }
+                } catch (error) {
+                    console.error('Error parsing motion event:', error);
+                }
+            };
+            
+            this.motionEventSource.onerror = (error) => {
+                if (this.motionEventSource.readyState === EventSource.CONNECTING) {
+                    console.log('Motion event stream reconnecting...');
+                } else if (this.motionEventSource.readyState === EventSource.CLOSED) {
+                    console.log('Motion event stream closed, will reconnect in 5 seconds...');
+                    setTimeout(() => {
+                        if (!this.motionEventSource || this.motionEventSource.readyState === EventSource.CLOSED) {
+                            console.log('Reconnecting to motion event stream...');
+                            this.connectToMotionEvents();
+                        }
+                    }, 5000);
+                }
+            };
+        } catch (error) {
+            console.error('Failed to connect to motion event stream:', error);
+        }
+    }
+    
+    handleRealtimeMotionEvent(data) {
+        const { serialNumber, deviceName, motionDetected, timestamp } = data;
+        
+        if (motionDetected) {
+            console.log(`🚨 Real-time motion detected: ${deviceName} at ${timestamp}`);
+            
+            const timestampMs = new Date(timestamp).getTime();
+            this.lastMotionTimes[serialNumber] = timestampMs;
+            
+            this.updateMotionSensorLastTime(serialNumber);
+            
+            const sensorItem = document.querySelector(`[data-sensor-serial="${serialNumber}"]`);
+            if (sensorItem) {
+                sensorItem.classList.add('motion-active');
+                setTimeout(() => {
+                    sensorItem.classList.remove('motion-active');
+                }, 3000);
+            }
+            
+            setTimeout(() => {
+                console.log('Refreshing camera status after motion detection...');
+                this.checkConnection();
+            }, 2000);
         }
     }
     
@@ -103,7 +198,7 @@ class CameraModeToggle {
         try {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         } catch (error) {
-            console.warn('Audio context not supported:', error);
+            // Audio context not supported
         }
     }
     
@@ -146,7 +241,6 @@ class CameraModeToggle {
     startConnectionErrorAlerts() {
         if (this.isConnectionError) return; // Already active
         
-        console.log('Starting connection error alerts');
         this.isConnectionError = true;
         
         // Add error class to body for CSS animations
@@ -170,7 +264,6 @@ class CameraModeToggle {
     stopConnectionErrorAlerts() {
         if (!this.isConnectionError) return; // Not active
         
-        console.log('Stopping connection error alerts');
         this.isConnectionError = false;
         
         // Remove error classes
@@ -190,8 +283,18 @@ class CameraModeToggle {
     
     // Settings Management
     loadSettings() {
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const isDockerContainer = window.location.hostname === 'eufy-ui';
+        
+        let defaultApiEndpoint;
+        if (isDockerContainer) {
+            defaultApiEndpoint = 'http://eufy-api:8080';
+        } else {
+            defaultApiEndpoint = `http://${window.location.hostname}:8080`;
+        }
+        
         const defaultSettings = {
-            apiEndpoint: 'http://localhost:8080',
+            apiEndpoint: defaultApiEndpoint,
             refreshInterval: 30,
             showBatteryLevels: true,
             autoExpandDetails: false,
@@ -199,25 +302,68 @@ class CameraModeToggle {
             confirmActions: true,
             defaultMode: 'recording',
             toggleDelay: 2,
-            muteConnectionAlerts: false, // New setting for muting connection error sounds
-            selectedCameras: [] // Array of camera serial numbers to include in toggle operations
+            muteConnectionAlerts: false,
+            motionTriggeredAutoSwitch: true,
+            selectedCameras: []
         };
         
+        return defaultSettings;
+    }
+    
+    async loadSettingsFromServer() {
         try {
-            const saved = localStorage.getItem('eufySettings');
-            return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
+            const response = await fetch(`${this.apiBase}/api/settings`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.settings && Object.keys(data.settings).length > 0) {
+                if (data.settings.selectedCameras && typeof data.settings.selectedCameras === 'string') {
+                    try {
+                        data.settings.selectedCameras = JSON.parse(data.settings.selectedCameras);
+                    } catch (e) {
+                        data.settings.selectedCameras = [];
+                    }
+                }
+                
+                this.settings = { ...this.settings, ...data.settings };
+                console.log('Loaded settings from server:', this.settings);
+            } else {
+                console.log('No settings found on server, using defaults');
+            }
         } catch (error) {
-            console.warn('Failed to load settings:', error);
-            return defaultSettings;
+            console.error('Error loading settings from server:', error);
         }
     }
     
-    saveSettings() {
+    async saveSettings() {
         try {
-            localStorage.setItem('eufySettings', JSON.stringify(this.settings));
-            console.log('Settings saved successfully');
+            const settingsToSave = { ...this.settings };
+            
+            if (Array.isArray(settingsToSave.selectedCameras)) {
+                settingsToSave.selectedCameras = JSON.stringify(settingsToSave.selectedCameras);
+            }
+            
+            const response = await fetch(`${this.apiBase}/api/settings`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(settingsToSave)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            console.log('Settings saved to server:', data);
+            return true;
         } catch (error) {
-            console.error('Failed to save settings:', error);
+            console.error('Error saving settings to server:', error);
+            return false;
         }
     }
     
@@ -232,6 +378,7 @@ class CameraModeToggle {
         document.getElementById('defaultMode').value = this.settings.defaultMode;
         document.getElementById('toggleDelay').value = this.settings.toggleDelay;
         document.getElementById('muteConnectionAlerts').checked = this.settings.muteConnectionAlerts;
+        document.getElementById('motionTriggeredAutoSwitch').checked = this.settings.motionTriggeredAutoSwitch !== false;
         
         // Add save settings event listener
         document.getElementById('saveSettings').addEventListener('click', () => {
@@ -268,8 +415,7 @@ class CameraModeToggle {
         this.apiBase = this.settings.apiEndpoint;
     }
     
-    applySettings() {
-        // Get values from modal
+    async applySettings() {
         const newSettings = {
             apiEndpoint: document.getElementById('apiEndpoint').value,
             refreshInterval: parseInt(document.getElementById('refreshInterval').value),
@@ -280,21 +426,23 @@ class CameraModeToggle {
             defaultMode: document.getElementById('defaultMode').value,
             toggleDelay: parseInt(document.getElementById('toggleDelay').value),
             muteConnectionAlerts: document.getElementById('muteConnectionAlerts').checked,
+            motionTriggeredAutoSwitch: document.getElementById('motionTriggeredAutoSwitch').checked,
             selectedCameras: this.getSelectedCameras()
         };
         
-        // Check if API endpoint changed
         const apiChanged = this.settings.apiEndpoint !== newSettings.apiEndpoint;
         const intervalChanged = this.settings.refreshInterval !== newSettings.refreshInterval;
         
-        // Update settings
         this.settings = newSettings;
-        this.saveSettings();
+        const saveSuccess = await this.saveSettings();
         
-        // Apply changes
+        if (!saveSuccess) {
+            this.showNotification('Failed to save settings to server', 'danger');
+            return;
+        }
+        
         if (apiChanged) {
             this.apiBase = this.settings.apiEndpoint;
-            // Recheck connection with new endpoint
             this.checkConnection();
         }
         
@@ -302,26 +450,19 @@ class CameraModeToggle {
             this.setupAutoRefresh();
         }
         
-        // Refresh camera details to apply display settings immediately
         this.refreshCameraDetailsDisplay();
         
-        // Handle auto-expand details setting
         const cameraList = document.getElementById('cameraList');
         if (this.settings.autoExpandDetails) {
             if (!cameraList.classList.contains('show')) {
                 const collapse = new bootstrap.Collapse(cameraList);
                 collapse.show();
             }
-        } else {
-            // If auto-expand is disabled and details are currently shown, leave them as-is
-            // (don't auto-collapse, let user control it manually)
         }
         
-        // Close modal
         const modal = bootstrap.Modal.getInstance(document.getElementById('settingsModal'));
         modal.hide();
         
-        // Show success message
         this.showNotification('Settings saved successfully!', 'success');
     }
     
@@ -334,14 +475,147 @@ class CameraModeToggle {
         // Set up new interval
         this.refreshInterval = setInterval(() => {
             this.checkConnection();
+            this.loadMotionSensors();
         }, this.settings.refreshInterval * 1000);
     }
     
+    async loadMotionSensors() {
+        try {
+            const response = await fetch(`${this.apiBase}/api/motion-sensors`);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            this.updateMotionSensorDisplay(data.motionSensors);
+            
+        } catch (error) {
+            this.updateMotionSensorDisplay(null, error.message);
+        }
+    }
+
+    updateMotionSensorDisplay(sensors, error = null) {
+        const container = document.getElementById('motionSensorList');
+        
+        if (error) {
+            container.innerHTML = `
+                <div class="text-center text-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Failed to load motion sensors
+                    <br><small>${error}</small>
+                </div>
+            `;
+            return;
+        }
+        
+        if (!sensors || sensors.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted">
+                    <i class="bi bi-info-circle me-2"></i>No motion sensors found
+                </div>
+            `;
+            return;
+        }
+
+        const activeSensors = sensors.filter(sensor => 
+            sensor.properties && !sensor.error
+        );
+
+        if (activeSensors.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted">
+                    <i class="bi bi-info-circle me-2"></i>No active motion sensors
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = '';
+        
+        activeSensors.forEach(sensor => {
+            const sensorItem = document.createElement('div');
+            sensorItem.className = 'motion-sensor-item d-flex justify-content-between align-items-center mb-2 p-2 bg-secondary bg-opacity-50 rounded';
+            sensorItem.setAttribute('data-sensor-serial', sensor.serialNumber);
+            
+            const batteryLow = sensor.properties?.batteryLow || false;
+            const batteryIcon = batteryLow ? 'bi-battery-half text-warning' : 'bi-battery-full text-success';
+            const batteryText = batteryLow ? 'Low' : 'OK';
+            
+            const sensorName = sensor.properties?.name || sensor.name;
+            
+            const lastMotionTime = sensor.properties?.motionSensorPirEvent;
+            if (lastMotionTime) {
+                this.lastMotionTimes[sensor.serialNumber] = lastMotionTime;
+            }
+            const lastMotionDisplay = this.formatRelativeTime(lastMotionTime);
+            
+            sensorItem.innerHTML = `
+                <div class="d-flex flex-column">
+                    <div class="d-flex align-items-center mb-1">
+                        <i class="bi bi-broadcast text-success me-2"></i>
+                        <strong>${sensorName}</strong>
+                    </div>
+                    <small class="text-muted ms-4" style="font-size: 0.75rem;" data-last-motion="${sensor.serialNumber}">
+                        <i class="bi bi-clock me-1"></i>Last: ${lastMotionDisplay}
+                    </small>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-success">Active</span>
+                    <span><i class="bi ${batteryIcon} me-1"></i><small>${batteryText}</small></span>
+                </div>
+            `;
+            
+            container.appendChild(sensorItem);
+        });
+    }
+    
+    formatRelativeTime(timestamp) {
+        if (!timestamp) return 'Never';
+        
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        
+        if (diffMins < 1) {
+            return 'Just now';
+        } else if (diffMins < 60) {
+            return `${diffMins}m ago`;
+        } else if (diffHours < 24) {
+            return `${diffHours}h ago`;
+        } else {
+            return `${diffDays}d ago`;
+        }
+    }
+    
+    startTimeUpdateInterval() {
+        this.timeUpdateInterval = setInterval(() => {
+            this.updateAllMotionTimes();
+        }, 30000);
+    }
+    
+    updateAllMotionTimes() {
+        for (const [serialNumber, timestamp] of Object.entries(this.lastMotionTimes)) {
+            this.updateMotionSensorLastTime(serialNumber);
+        }
+    }
+    
+    updateMotionSensorLastTime(serialNumber) {
+        const element = document.querySelector(`[data-last-motion="${serialNumber}"]`);
+        if (element && this.lastMotionTimes[serialNumber]) {
+            const relativeTime = this.formatRelativeTime(this.lastMotionTimes[serialNumber]);
+            element.innerHTML = `<i class="bi bi-clock me-1"></i>Last: ${relativeTime}`;
+        }
+    }
+    
     refreshCameraDetailsDisplay() {
-        // Re-render camera details with current settings
-        if (this.lastDevicesData) {
-            const cameras = this.lastDevicesData.filter(device => device.type === 'device');
+        if (this.lastDevicesData && Array.isArray(this.lastDevicesData)) {
+            const cameras = this.lastDevicesData.filter(device => device.category === 'camera');
             this.updateCameraDetails(cameras);
+        } else {
+            this.cameraDetails.innerHTML = '<div class="text-center text-muted">Loading camera details...</div>';
         }
     }
     
@@ -354,11 +628,14 @@ class CameraModeToggle {
             }
             
             const data = await response.json();
-            const cameras = data.devices.filter(device => device.type === 'device');
+            if (!data.devices || !Array.isArray(data.devices)) {
+                throw new Error('Invalid device data received from server');
+            }
+            const cameras = data.devices.filter(device => device.category === 'camera');
             
             this.populateCameraSelection(cameras);
         } catch (error) {
-            console.error('Failed to load cameras for selection:', error);
+            console.error('Error loading camera selection:', error);
             this.showCameraSelectionError('Failed to load cameras. Please check your connection.');
         }
     }
@@ -459,7 +736,6 @@ class CameraModeToggle {
     }
 
     async checkConnection() {
-        console.log('Checking connection and fetching device status...');
         try {
             const response = await fetch(`${this.apiBase}/api/devices`);
             
@@ -468,12 +744,10 @@ class CameraModeToggle {
             }
             
             const data = await response.json();
-            console.log('Received device data:', data);
             this.updateConnectionStatus(true);
             this.updateCameraStatus(data.devices);
             
         } catch (error) {
-            console.error('Connection check failed:', error);
             this.updateConnectionStatus(false, error.message);
         }
     }
@@ -503,9 +777,14 @@ class CameraModeToggle {
     }
 
     updateCameraStatus(devices) {
-        // Store devices data for later use
+        if (!devices || !Array.isArray(devices)) {
+            console.error('Invalid devices data in updateCameraStatus');
+            this.toggleStatus.textContent = 'Error loading camera status';
+            return;
+        }
+        
         this.lastDevicesData = devices;
-        let cameras = devices.filter(device => device.type === 'device');
+        let cameras = devices.filter(device => device.category === 'camera');
         
         if (cameras.length === 0) {
             this.toggleStatus.textContent = 'No cameras found';
@@ -516,8 +795,6 @@ class CameraModeToggle {
         let camerasForToggleState = cameras;
         if (this.settings.selectedCameras && this.settings.selectedCameras.length > 0) {
             camerasForToggleState = cameras.filter(camera => this.settings.selectedCameras.includes(camera.serialNumber));
-            console.log(`Determining toggle state based on ${camerasForToggleState.length} selected cameras:`, 
-                       camerasForToggleState.map(c => c.name));
         }
 
         if (camerasForToggleState.length === 0) {
@@ -601,23 +878,19 @@ class CameraModeToggle {
             </div>
         ` : '';
         
-        const nameHeaderColSize = this.settings.showBatteryLevels ? 'col-12 col-md-3' : 'col-6 col-md-4';
-        const enabledHeaderColSize = this.settings.showBatteryLevels ? 'col-6 col-md-1' : 'col-6 col-md-2';
+        const nameHeaderColSize = this.settings.showBatteryLevels ? 'col-12 col-md-4' : 'col-6 col-md-5';
 
         headerRow.innerHTML = `
             <div class="${nameHeaderColSize}">
                 <small class="text-white"><strong>Camera</strong></small>
             </div>
-            <div class="col-6 col-md-2">
+            <div class="col-6 col-md-3">
                 <small class="text-white"><strong>Motion Mode</strong></small>
             </div>
-            <div class="col-6 col-md-2">
+            <div class="col-6 col-md-3">
                 <small class="text-white"><strong>Power Mode</strong></small>
             </div>
             ${batteryHeaderCol}
-            <div class="${enabledHeaderColSize} pe-0">
-                <small class="text-white"><strong>Status</strong></small>
-            </div>
         `;
         
         container.appendChild(headerRow);
@@ -667,9 +940,7 @@ class CameraModeToggle {
             ` : '';
 
             // Adjust column sizes based on whether battery is shown
-            const nameColSize = this.settings.showBatteryLevels ? 'col-12 col-md-3' : 'col-6 col-md-4';
-            const statusColSize = this.settings.showBatteryLevels ? 'col-6 col-md-2' : 'col-6 col-md-3';
-            const enabledColSize = this.settings.showBatteryLevels ? 'col-6 col-md-1' : 'col-6 col-md-2';
+            const nameColSize = this.settings.showBatteryLevels ? 'col-12 col-md-4' : 'col-6 col-md-5';
 
             // Check if this camera is selected for toggle operations
             const isSelected = !this.settings.selectedCameras || 
@@ -685,20 +956,17 @@ class CameraModeToggle {
                 <div class="${nameColSize}">
                     ${selectedIndicator}<strong class="${isSelected ? '' : 'text-muted'}">${camera.name}</strong>
                 </div>
-                <div class="col-6 col-md-2">
+                <div class="col-6 col-md-3">
                     <span class="badge bg-${powerMode === false ? 'warning' : 'success'} small">
                         ${getPowerModeName(powerMode)}
                     </span>
                 </div>
-                <div class="col-6 col-md-2">
+                <div class="col-6 col-md-3">
                     <span class="badge ${getPowerWorkingModeClass(powerWorkingMode)} small">
                         ${getPowerWorkingModeName(powerWorkingMode)}
                     </span>
                 </div>
                 ${batteryCol}
-                <div class="${enabledColSize} pe-0">
-                    <i class="bi bi-${enabled ? 'check-circle text-success' : 'x-circle text-danger'}"></i>
-                </div>
             `;
             
             container.appendChild(row);
@@ -710,7 +978,7 @@ class CameraModeToggle {
         
         // Show confirmation if enabled
         if (this.settings.confirmActions) {
-            const selectedCount = this.settings.selectedCameras.length;
+            const selectedCount = this.settings.selectedCameras ? this.settings.selectedCameras.length : 0;
             const confirmMessage = selectedCount > 0 
                 ? `Are you sure you want to toggle the camera mode for ${selectedCount} selected camera(s)?`
                 : 'Are you sure you want to toggle the camera mode for all cameras?';
@@ -729,6 +997,19 @@ class CameraModeToggle {
         }
         
         try {
+            // Verify we have camera data before proceeding
+            if (!this.lastDevicesData || !Array.isArray(this.lastDevicesData)) {
+                // Try to fetch camera data first
+                try {
+                    await this.checkConnection();
+                    if (!this.lastDevicesData || !Array.isArray(this.lastDevicesData)) {
+                        throw new Error('No camera data available. Please try refreshing the page.');
+                    }
+                } catch (connError) {
+                    throw new Error('Failed to connect to camera system. Please check your connection.');
+                }
+            }
+            
             // Prepare request body with selected cameras
             const requestBody = {};
             if (this.settings.selectedCameras && this.settings.selectedCameras.length > 0) {
@@ -748,37 +1029,37 @@ class CameraModeToggle {
             }
 
             const result = await response.json();
-            console.log('Toggle result:', result);
-            
-            // Play sound effect if enabled
-            if (this.settings.soundEffects) {
-                this.playToggleSound();
+            if (!result || !result.summary || !result.targetSettings) {
+                throw new Error('Invalid response from server');
             }
             
-            // Show initial notification with selection-aware text
-            const selectedCount = this.settings.selectedCameras.length;
-            const totalAvailableCameras = this.lastDevicesData ? 
-                this.lastDevicesData.filter(device => device.type === 'device').length : 
-                result.summary.totalCameras;
-            
-            const isSelectiveMode = selectedCount > 0 && selectedCount < totalAvailableCameras;
+            const isSelectiveMode = this.settings.selectedCameras && this.settings.selectedCameras.length > 0;
+            const cameraCount = result.summary.totalCameras;
             const cameraText = isSelectiveMode 
-                ? `${result.summary.totalCameras} selected cameras` 
-                : `${result.summary.totalCameras} cameras`;
+                ? `${cameraCount} selected camera${cameraCount > 1 ? 's' : ''}`
+                : `all ${cameraCount} camera${cameraCount > 1 ? 's' : ''}`;
+            
             this.showNotification(`Toggle command sent to ${cameraText}. Waiting for completion...`, 'info');
             
-            // Now wait for all selected cameras to reach their target state
-            await this.waitForCameraTransition(result.targetSettings);
+            try {
+                await this.waitForCameraTransition(result.targetSettings);
+                
+                const successText = isSelectiveMode
+                    ? `${cameraCount} selected camera${cameraCount > 1 ? 's' : ''} successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`
+                    : `All ${cameraCount} camera${cameraCount > 1 ? 's' : ''} successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`;
+                this.showNotification(successText, 'success');
+            } catch (transitionError) {
+                console.error('Camera transition error:', transitionError);
+                // Still show partial success since the command was sent
+                this.showNotification(`Command sent successfully, but couldn't verify all cameras completed transition.`, 'warning');
+            }
             
-            // Show final success notification with selection-aware text
-            const successText = isSelectiveMode
-                ? `Selected cameras successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`
-                : `All cameras successfully transitioned to ${result.targetSettings.powerWorkingMode.name} mode!`;
-            this.showNotification(successText, 'success');
+            // Refresh camera status
+            await this.checkConnection();
             
         } catch (error) {
-            console.error('Toggle failed:', error);
-            this.showNotification(`Toggle failed: ${error.message}`, 'danger');
+            console.error('Toggle error:', error);
+            this.showNotification(`Toggle failed: ${error.message || 'Unknown error'}`, 'danger');
         } finally {
             this.isToggling = false;
             this.showLoading(false);
@@ -789,10 +1070,6 @@ class CameraModeToggle {
         const maxAttempts = 20; // Maximum number of polling attempts
         const pollInterval = 2000; // 2 seconds between polls
         let attempts = 0;
-        
-        console.log('Waiting for camera transition to complete...');
-        console.log('Target settings:', targetSettings);
-        console.log('Selected cameras:', this.settings.selectedCameras);
         
         while (attempts < maxAttempts) {
             attempts++;
@@ -805,12 +1082,17 @@ class CameraModeToggle {
                 }
                 
                 const data = await response.json();
-                let cameras = data.devices.filter(device => device.type === 'device');
+                if (!data.devices || !Array.isArray(data.devices)) {
+                    console.error('Invalid device data during transition polling');
+                    await new Promise(resolve => setTimeout(resolve, pollInterval));
+                    continue;
+                }
+                
+                let cameras = data.devices.filter(device => device.category === 'camera');
                 
                 // Filter cameras to only include selected ones if camera selection is enabled
                 if (this.settings.selectedCameras && this.settings.selectedCameras.length > 0) {
                     cameras = cameras.filter(camera => this.settings.selectedCameras.includes(camera.serialNumber));
-                    console.log(`Monitoring ${cameras.length} selected cameras:`, cameras.map(c => c.name));
                 }
                 
                 // Check if all selected cameras have reached target state
@@ -840,7 +1122,7 @@ class CameraModeToggle {
                     }
                 }
                 
-                console.log(`Transition progress: ${transitionedCount}/${totalCameras} selected cameras ready`);
+
                 
                 // Update the loading text with progress for selected cameras
                 const selectedText = this.settings.selectedCameras && this.settings.selectedCameras.length > 0 
@@ -851,7 +1133,6 @@ class CameraModeToggle {
                 this.updateCameraStatus(data.devices);
                 
                 if (allCamerasReady && totalCameras > 0) {
-                    console.log('All selected cameras have successfully transitioned!');
                     return; // All selected cameras are in the target state
                 }
                 
@@ -859,14 +1140,12 @@ class CameraModeToggle {
                 await new Promise(resolve => setTimeout(resolve, pollInterval));
                 
             } catch (error) {
-                console.error(`Polling attempt ${attempts} failed:`, error);
                 // Continue trying even if one poll fails
                 await new Promise(resolve => setTimeout(resolve, pollInterval));
             }
         }
         
         // If we reach here, not all selected cameras transitioned within the timeout
-        console.warn('Timeout waiting for all selected cameras to transition');
         throw new Error('Not all selected cameras completed transition within expected time');
     }
     
@@ -894,7 +1173,7 @@ class CameraModeToggle {
             oscillator.start(audioContext.currentTime);
             oscillator.stop(audioContext.currentTime + 0.1);
         } catch (error) {
-            console.warn('Could not play sound effect:', error);
+            // Could not play sound effect
         }
     }
 
@@ -905,6 +1184,8 @@ class CameraModeToggle {
             this.loadingOverlay.classList.add('d-none');
         }
     }
+    
+
 }
 
 // Initialize the application when the page loads

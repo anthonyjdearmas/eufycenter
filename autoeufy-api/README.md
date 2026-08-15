@@ -27,8 +27,24 @@ This will:
 
 ## Available Endpoints
 
+### Basic Endpoints
 - `GET /`: Shows a welcome message
+- `GET /health`: Health check endpoint
 - `GET /api/devices`: Checks the connection status with the Eufy server
+
+### Camera Control
+- `POST /api/cameras/toggle-mode`: Toggle camera modes between Optimal Surveillance and Customized Recording
+
+### Scheduling
+- `GET /api/schedules`: Get all schedules
+- `POST /api/schedules`: Create a new schedule
+- `GET /api/schedules/:id`: Get a specific schedule
+- `PUT /api/schedules/:id`: Update a schedule
+- `DELETE /api/schedules/:id`: Delete a schedule
+- `PATCH /api/schedules/:id/toggle`: Enable/disable a schedule
+- `GET /api/schedules/info/example`: Get example schedule format
+
+For detailed scheduling documentation, see [SCHEDULING_GUIDE.md](SCHEDULING_GUIDE.md)
 
 ## WebSocket Messages
 

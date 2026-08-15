@@ -1,0 +1,94 @@
+### Get all schedules
+GET http://localhost:3000/api/schedules
+
+###
+
+### Get example schedule format
+GET http://localhost:3000/api/schedules/info/example
+
+###
+
+### Create a weekday work hours schedule
+POST http://localhost:3000/api/schedules
+Content-Type: application/json
+
+{
+  "name": "Weekday Work Hours",
+  "description": "Customized recording during work hours Monday-Friday",
+  "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+  "timeRanges": [
+    { "start": "06:00", "end": "10:00" },
+    { "start": "12:00", "end": "14:00" },
+    { "start": "20:00", "end": "23:59" }
+  ],
+  "mode": 2,
+  "allOtherMotions": true,
+  "cameras": [],
+  "enabled": true
+}
+
+###
+
+### Create a weekend battery saving schedule
+POST http://localhost:3000/api/schedules
+Content-Type: application/json
+
+{
+  "name": "Weekend Battery Saving",
+  "description": "Save battery all day on weekends",
+  "days": ["saturday", "sunday"],
+  "timeRanges": [
+    { "start": "00:00", "end": "23:59" }
+  ],
+  "mode": 0,
+  "allOtherMotions": false,
+  "cameras": [],
+  "enabled": true
+}
+
+###
+
+### Create a nighttime schedule for specific camera
+POST http://localhost:3000/api/schedules
+Content-Type: application/json
+
+{
+  "name": "Backyard Night Mode",
+  "description": "Enhanced recording for backyard camera at night",
+  "days": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+  "timeRanges": [
+    { "start": "22:00", "end": "06:00" }
+  ],
+  "mode": 2,
+  "allOtherMotions": true,
+  "cameras": ["T8113N63212153EF"],
+  "enabled": true
+}
+
+###
+
+### Update a schedule (replace SCHEDULE_ID with actual ID)
+PUT http://localhost:3000/api/schedules/SCHEDULE_ID
+Content-Type: application/json
+
+{
+  "name": "Updated Schedule Name",
+  "enabled": true
+}
+
+###
+
+### Toggle schedule enable/disable (replace SCHEDULE_ID with actual ID)
+PATCH http://localhost:3000/api/schedules/SCHEDULE_ID/toggle
+
+###
+
+### Get specific schedule (replace SCHEDULE_ID with actual ID)
+GET http://localhost:3000/api/schedules/SCHEDULE_ID
+
+###
+
+### Delete a schedule (replace SCHEDULE_ID with actual ID)
+DELETE http://localhost:3000/api/schedules/SCHEDULE_ID
+
+###

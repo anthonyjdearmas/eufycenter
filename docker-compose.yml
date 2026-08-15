@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  eufy-api:
+    build:
+      context: ./autoeufy-api
+      dockerfile: Dockerfile
+    container_name: eufy-api
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persist the database directory
+      - ./autoeufy-api/database:/app/database
+      # Persist the persistent.json file
+      - ./autoeufy-api/persistent.json:/app/persistent.json
+    environment:
+      - NODE_ENV=production
+      - TZ=America/New_York
+    restart: always
+    networks:
+      - eufy-network
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  eufy-ui:
+    build:
+      context: ./autoeufy-ui
+      dockerfile: Dockerfile
+    container_name: eufy-ui
+    ports:
+      - "8081:8081"
+    environment:
+      - API_BASE_URL=http://192.168.1.9:8080
+    depends_on:
+      eufy-api:
+        condition: service_healthy
+    restart: always
+    networks:
+      - eufy-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  eufy-network:
+    driver: bridge 

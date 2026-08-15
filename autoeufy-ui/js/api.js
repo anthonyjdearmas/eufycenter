@@ -1,0 +1,100 @@
+class ApiService {
+    constructor() {
+        // Check if config is available (Docker environment)
+        if (window.API_CONFIG && window.API_CONFIG.baseUrl) {
+            this.apiBase = window.API_CONFIG.baseUrl;
+        } else {
+            // Fallback for local development
+            this.apiBase = `http://${window.location.hostname}:8080`;
+        }
+    }
+
+    setApiBase(apiBase) {
+        this.apiBase = apiBase;
+    }
+
+    getApiBase() {
+        return this.apiBase;
+    }
+
+    async getDevices() {
+        const response = await fetch(`${this.apiBase}/api/devices`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return await response.json();
+    }
+
+    async getMotionSensors() {
+        const response = await fetch(`${this.apiBase}/api/motion-sensors`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return await response.json();
+    }
+
+    async getSettings() {
+        const response = await fetch(`${this.apiBase}/api/settings`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return await response.json();
+    }
+
+    async saveSettings(settings) {
+        const response = await fetch(`${this.apiBase}/api/settings`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(settings)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        return await response.json();
+    }
+
+    async toggleCameraMode(selectedCameras = null) {
+        const requestBody = {};
+        if (selectedCameras && selectedCameras.length > 0) {
+            requestBody.selectedCameras = selectedCameras;
+        }
+        
+        const response = await fetch(`${this.apiBase}/api/cameras/toggle-mode`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        return await response.json();
+    }
+
+    connectToMotionEvents() {
+        return new EventSource(`${this.apiBase}/api/motion-events`);
+    }
+
+    async getSchedules() {
+        const response = await fetch(`${this.apiBase}/api/schedules`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return await response.json();
+    }
+
+    async getScheduleCompliance() {
+        const response = await fetch(`${this.apiBase}/api/schedules/compliance`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return await response.json();
+    }
+}
