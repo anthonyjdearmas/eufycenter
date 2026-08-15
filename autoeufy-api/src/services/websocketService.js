@@ -15,9 +15,11 @@ export function startEufyServer() {
     ]);
 
     eufyServer.stdout.on('data', (data) => {
+        const output = data.toString();
+        if (output.includes('T8410P5224413744')) return;
         console.log(`Eufy Server: ${data}`);
 
-        if (data.toString().includes('Eufy Security server listening')) {
+        if (output.includes('Eufy Security server listening')) {
             initializeWebSocketConnection();
         }
     });
@@ -54,7 +56,6 @@ function initializeWebSocketConnection() {
 
     ws.on('message', (data) => {
         const message = JSON.parse(data.toString());
-        console.log('Received message:', message);
 
         if (message.type === 'event' && message.event && message.event.event === 'captcha request') {
             setPendingCaptcha({ captchaId: message.event.captchaId, captcha: message.event.captcha });
