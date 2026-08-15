@@ -1,3 +1,4 @@
 timestamp,date,time,transition_type,from_mode,to_mode,cameras_affected,hours_since_last_transition,notes
 2025-07-05T16:49:11.314Z,7/5/2025,12:49:11 PM,Switching to Customized Recording mode and enabling all other motions,Optimal Surveillance (Battery Saving),Customized Recording,2 cameras: Driveway; Driveway Above View,N/A,0/2 cameras successful
 2025-07-05T16:52:29.582Z,7/5/2025,12:52:29 PM,Switching to Optimal Surveillance mode (battery saving) and disabling all other motions,Customized Recording,Optimal Surveillance (Battery Saving),2 cameras: Driveway; Driveway Above View,0.06,0/2 cameras successful
+2026-08-15T12:20:53.784Z,8/15/2026,8:20:53 AM,Switching to Customized Recording mode and enabling all other motions,Optimal Surveillance (Battery Saving),Customized Recording,2 cameras: Driveway; Driveway Above View,9739.47,0/2 cameras successful
